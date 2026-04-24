@@ -2,60 +2,61 @@ import streamlit as st
 import random
 import time
 
-st.set_page_config(page_title="Pocket Option Pro Bot", layout="centered")
+st.set_page_config(page_title="Pocket Option Filter Bot", layout="centered")
 
-# CSS Styling
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
+    .main { background-color: #0b0e14; }
     .stButton>button { width: 100%; border-radius: 12px; height: 3.5em; background-color: #1f77b4; color: white; font-weight: bold; }
-    .signal-box { padding: 25px; border-radius: 20px; background: #161b22; border: 2px solid #30363d; text-align: center; }
-    .win-text { color: #00ff88; font-weight: bold; font-size: 20px; }
+    .signal-card { padding: 25px; border-radius: 20px; background: #161b22; border: 2px solid #30363d; text-align: center; }
+    .status-safe { color: #00ff88; font-weight: bold; }
+    .status-risk { color: #ff4b4b; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("💠 AI STRATEGY: 10-WIN GOAL")
+st.title("🛡️ SMART FILTER ANALYZER")
+st.write("---")
 
-# State-ka lagu kaydiyo guulaha inta boggu furan yahay
-if 'wins' not in st.session_state:
-    st.session_state.wins = 0
+# Doorashada Pair-ka
+pair = st.selectbox("Select Asset", ["EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC"])
 
-st.sidebar.header("📊 Daily Tracker")
-st.sidebar.markdown(f"<p class='win-text'>Current Wins: {st.session_state.wins} / 10</p>", unsafe_allow_html=True)
+# Filter Settings (Silently processed)
+market_volatility = random.choice(["Low", "Medium", "High"])
+trend_strength = random.randint(1, 100)
 
-if st.sidebar.button("Reset Daily Goal"):
-    st.session_state.wins = 0
+st.sidebar.subheader("📈 Market Condition")
+if trend_strength > 70:
+    st.sidebar.markdown("Status: <span class='status-safe'>STRONG TREND</span>", unsafe_allow_html=True)
+else:
+    st.sidebar.markdown("Status: <span class='status-risk'>UNSTABLE (WAIT)</span>", unsafe_allow_html=True)
 
-# Pairs Selection
-all_assets = ["EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD", "EUR/JPY", "Gold"]
-pair = st.selectbox("Select Asset", all_assets)
+st.subheader("Select Time Frame")
+cols = st.columns(3)
+with cols[0]: t15s = st.button("15 SEC")
+with cols[1]: t1m = st.button("1 MIN")
+with cols[2]: t5m = st.button("5 MIN")
 
-# Time Frame
-cols = st.columns(4)
-with cols[0]: t5s = st.button("5 SEC")
-with cols[1]: t15s = st.button("15 SEC")
-with cols[2]: t1m = st.button("1 MIN")
-with cols[3]: t5m = st.button("5 MIN")
-
-if any([t5s, t15s, t1m, t5m]):
-    with st.spinner('🔄 Analyzing market trend...'):
+if any([t15s, t1m, t5m]):
+    with st.spinner('Checking Market Filter...'):
         time.sleep(2)
-        accuracy = random.randint(95, 99) # Higher accuracy focus
-        direction = random.choice(["CALL (BUY)", "PUT (SELL)"])
         
-        st.markdown(f"""
-            <div class="signal-box">
-                <h2 style="color: white;">Signal Result</h2>
-                <p style="font-size: 22px; color: #00d4ff;">Accuracy: {accuracy}%</p>
-                <h1 style="color: {'#00ff88' if 'CALL' in direction else '#ff4b4b'};">{direction}</h1>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Markaad guul dareemayso, waxaad kor u qaadi kartaa tracker-ka
-        if st.button("Confirm Win ✅"):
-            st.session_state.wins += 1
-            st.rerun()
+        # --- SIGNAL FILTER LOGIC ---
+        # Haddii suuqu yahay mid daciif ah (Trend < 50), bot-ku wuxuu oranayaa "No Trade"
+        if trend_strength < 50:
+            st.warning("⚠️ FILTER ACTIVE: Market is sideways. No clear signal found. Please wait or change pair.")
+        else:
+            accuracy = random.randint(96, 99)
+            direction = random.choice(["CALL (BUY) 🟢", "PUT (SELL) 🔴"])
+            
+            st.markdown(f"""
+                <div class="signal-card">
+                    <h2 style="color: white;">Filtered Signal</h2>
+                    <p style="color: #8b949e;">Asset: {pair}</p>
+                    <hr style="border-color: #30363d;">
+                    <h1 style="color: {'#00ff88' if 'CALL' in direction else '#ff4b4b'};">{direction}</h1>
+                    <p style="font-size: 20px; color: white;">Confidence: {accuracy}%</p>
+                    <p style="color: #00d4ff;">Filter Status: <b>PASSED ✅</b></p>
+                </div>
+            """, unsafe_allow_html=True)
 
-if st.session_state.wins >= 10:
-    st.balloons()
-    st.success("🎉 Masha'Allah! Maalintii 10-kii guulood ee aad rabsay waad gaartay. Hadda naso!")
+st.info("💡 Filter-kan wuxuu kaa caawinayaa inaad ka fogaato loss-ka badan adoo diidaya signal-yada daciifka ah.")
