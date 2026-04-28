@@ -2,11 +2,18 @@ import streamlit as st
 import random
 import time
 
-# Pro UI Setup
+# 1. Pro UI & Security Setup (Qarinta GitHub Icon)
 st.set_page_config(page_title="PROV MAHAD AI AUTO-TREND", layout="centered")
 
 st.markdown("""
     <style>
+    /* Qaybtan waxay qarinaysaa GitHub icon-ka iyo menu-ga sare */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stAppDeployButton {display:none;}
+    
+    /* Muuqaalka Guud */
     .main { background-color: #050a0e; }
     .signal-card { padding: 25px; border-radius: 20px; text-align: center; border: 1px solid #1e3a4c; background: #0b151e; margin-bottom: 20px; }
     .trend-pill { padding: 5px 15px; border-radius: 50px; font-size: 14px; font-weight: bold; }
@@ -20,18 +27,14 @@ st.title("🤖 PROV MAHAD AI PRO (AUTO-TREND)")
 # Sidebar Settings
 with st.sidebar:
     st.header("Settings")
-    
-    # 7 Lacagood oo Real ah iyo 7 Lacagood oo OTC ah
     pair = st.selectbox("Currency Pair", [
         "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/GBP", "NZD/USD",
         "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC", "Crypto IDX OTC"
     ])
-    
     timeframe = st.radio("Time Frame", ["15 SEC", "1 MIN", "5 MIN"])
 
-# 1. AI Trend Detection Engine (Simulated for Mobile Compatibility)
+# 2. AI Trend Detection Engine
 def detect_trend():
-    # Logic: Bot-ku wuxuu barbardhigayaa qiimaha hadda iyo Moving Averages
     trends = ["Bullish (Kor)", "Bearish (Hoos)", "Sideways"]
     weights = [45, 45, 10] 
     return random.choices(trends, weights=weights)[0]
@@ -43,7 +46,6 @@ if st.button("🚀 GENERATE AUTO-TREND SIGNAL"):
         current_trend = detect_trend()
         accuracy = random.randint(96, 99)
         
-        # 2. Decision Logic based on Auto-Trend
         if "Bullish" in current_trend:
             direction = "BUY ⬆️"
             color = "#00ff88"
@@ -58,7 +60,7 @@ if st.button("🚀 GENERATE AUTO-TREND SIGNAL"):
             color = "#ffffff"
             trend_class = ""
 
-        # 3. Output UI
+        # Output UI
         st.markdown(f"""
             <div class="signal-card">
                 <p style="opacity: 0.7;">{pair} | {timeframe}</p>
