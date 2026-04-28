@@ -20,14 +20,20 @@ st.title("🤖 PROV MAHAD AI PRO (AUTO-TREND)")
 # Sidebar Settings
 with st.sidebar:
     st.header("Settings")
-    pair = st.selectbox("Currency Pair", ["EUR/USD", "GBP/USD", "AUD/USD OTC"])
+    
+    # 7 Lacagood oo Real ah iyo 7 Lacagood oo OTC ah
+    pair = st.selectbox("Currency Pair", [
+        "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/GBP", "NZD/USD",
+        "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC", "Crypto IDX OTC"
+    ])
+    
     timeframe = st.radio("Time Frame", ["15 SEC", "1 MIN", "5 MIN"])
 
 # 1. AI Trend Detection Engine (Simulated for Mobile Compatibility)
 def detect_trend():
     # Logic: Bot-ku wuxuu barbardhigayaa qiimaha hadda iyo Moving Averages
     trends = ["Bullish (Kor)", "Bearish (Hoos)", "Sideways"]
-    weights = [45, 45, 10] # Suuqu inta badan waa Bullish ama Bearish
+    weights = [45, 45, 10] 
     return random.choices(trends, weights=weights)[0]
 
 if st.button("🚀 GENERATE AUTO-TREND SIGNAL"):
@@ -72,4 +78,4 @@ if st.button("🚀 GENERATE AUTO-TREND SIGNAL"):
             st.balloons()
             st.success("🔥 STRONG SIGNAL: Trend-ka iyo AI-da waa is waafaqsan yihiin!")
 
-st.info("💡 Pro Tip: Haddii bot-ku uu ku siiyo 'Detected Trend: Bullish', u diyaar garow trade-yada BUY-ga ah oo kaliya.")
+st.info("💡 Pro Tip: Iska hubi in lacagta aad bot-ka ka doorato ay la mid tahay tan aad Pocket Option ka furtay.")
