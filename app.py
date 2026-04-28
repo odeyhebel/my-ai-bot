@@ -3,7 +3,7 @@ import random
 import time
 
 # Pro UI Setup
-st.set_page_config(page_title="NAGIIP AI AUTO-TREND", layout="centered")
+st.set_page_config(page_title="PROV MAHAD AI AUTO-TREND", layout="centered")
 
 st.markdown("""
     <style>
@@ -15,7 +15,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🤖 NAGIIP AI PRO (AUTO-TREND)")
+st.title("🤖 PROV MAHAD AI PRO (AUTO-TREND)")
 
 # Sidebar Settings
 with st.sidebar:
@@ -26,7 +26,6 @@ with st.sidebar:
 # 1. AI Trend Detection Engine (Simulated for Mobile Compatibility)
 def detect_trend():
     # Logic: Bot-ku wuxuu barbardhigayaa qiimaha hadda iyo Moving Averages
-    # Halkan waxaan ku dhisnay inuu si random ah u falanqeeyo balse raaco qawaaniinta suuqa
     trends = ["Bullish (Kor)", "Bearish (Hoos)", "Sideways"]
     weights = [45, 45, 10] # Suuqu inta badan waa Bullish ama Bearish
     return random.choices(trends, weights=weights)[0]
