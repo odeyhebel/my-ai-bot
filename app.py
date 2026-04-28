@@ -2,16 +2,16 @@ import streamlit as st
 import random
 import time
 
-# 1. Pro UI & Security Setup (Qarinta GitHub Icon)
+# 1. Pro UI & Security Setup (Kaliya GitHub icon-ka ayaa qarsoon)
 st.set_page_config(page_title="PROV MAHAD AI AUTO-TREND", layout="centered")
 
 st.markdown("""
     <style>
-    /* Qaybtan waxay qarinaysaa GitHub icon-ka iyo menu-ga sare */
+    /* Waxaan qarinaynaa kaliya menu-ga sare iyo calaamadda GitHub */
+    header[data-testid="stHeader"] {visibility: hidden;}
+    .stAppDeployButton {display:none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stAppDeployButton {display:none;}
     
     /* Muuqaalka Guud */
     .main { background-color: #050a0e; }
@@ -24,14 +24,14 @@ st.markdown("""
 
 st.title("🤖 PROV MAHAD AI PRO (AUTO-TREND)")
 
-# Sidebar Settings
+# Sidebar Settings - Hadda si fiican ayay u muuqanaysaa
 with st.sidebar:
-    st.header("Settings")
-    pair = st.selectbox("Currency Pair", [
+    st.header("⚙️ Market Settings")
+    pair = st.selectbox("Doorlacagta (Asset)", [
         "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/GBP", "NZD/USD",
         "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC", "Crypto IDX OTC"
     ])
-    timeframe = st.radio("Time Frame", ["15 SEC", "1 MIN", "5 MIN"])
+    timeframe = st.radio("Door Waqtiga (Timer)", ["15 SEC", "1 MIN", "5 MIN"])
 
 # 2. AI Trend Detection Engine
 def detect_trend():
