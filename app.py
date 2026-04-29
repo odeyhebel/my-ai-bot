@@ -9,14 +9,13 @@ import websockets
 # 1. Configuration & Security
 st.set_page_config(page_title="AI Auto-Trader Pro", layout="centered")
 
-# In xogta Secrets laga soo akhriyo Streamlit
+# Hubi in Secrets ay ku jiraan Streamlit
 try:
     USER_EMAIL = st.secrets["PO_EMAIL"]
     USER_PASS = st.secrets["PO_PASSWORD"]
 except:
     st.error("Secrets-ka laguma helin! Hubi 'App Settings -> Secrets' ee Streamlit.")
 
-# Dejinta xadka khasaaraha
 if 'consecutive_losses' not in st.session_state:
     st.session_state.consecutive_losses = 0
 
@@ -32,17 +31,17 @@ with st.sidebar:
         st.error("🛑 BOT STOPPED: Xadkii khasaaraha waa la gaaray!")
         st.stop()
 
-# 3. Pocket Option Connection Logic (Koodhka Cusub)
+# 3. Pocket Option Connection Logic
 async def connect_and_trade():
-    # URL-ka saxda ah ee Pocket Option (Server-ka EU)
+    # URL-kan waa kan saxda ah ee Websocket-ka
     uri = "wss://api-eu.pocketoption.com/socket.io/?EIO=4&transport=websocket"
     
     try:
         # Waxaan ku darnay 'ping_interval' si uusan xiriirku u 'Timeout' noqon
         async with websockets.connect(uri, ping_interval=5, ping_timeout=10) as websocket:
-            st.toast("Xiriirka waa la bilaabay...")
+            st.toast("Isku xirka waa la bilaabay...")
             
-            # Authentication Payload (Format-ka 42 waa muhiim)
+            # Authentication Payload
             auth_payload = f'42["auth", {{"email": "{USER_EMAIL}", "password": "{USER_PASS}"}}]'
             await websocket.send(auth_payload)
             
@@ -51,12 +50,11 @@ async def connect_and_trade():
             while st.session_state.consecutive_losses < max_losses:
                 response = await websocket.recv()
                 
-                # Halkan waxaan ku muujinaynaa xogta live-ka ah
+                # Muuji xogta live-ka ah ee soo dhacaysa
                 with st.empty():
                     st.write(f"📡 Xog live ah: {response[:100]}...")
                 
-                # (Halkan waxaa geli doona falanqaynta RSI/MA ee trade-ka)
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)
                 
     except Exception as e:
         st.error(f"Cilad xiriir: {e}")
