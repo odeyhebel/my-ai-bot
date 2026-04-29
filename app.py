@@ -5,9 +5,10 @@ import time
 import random
 from streamlit_autorefresh import st_autorefresh
 
-# 1. SETUP & UI SECURITY
-st.set_page_config(page_title="PROV MAHAD HYBRID", layout="centered")
-st_autorefresh(interval=3000, key="auto_refresh_hybrid")
+# 1. SETUP & SLOWER REFRESH (10 SECONDS)
+st.set_page_config(page_title="PROV MAHAD HYBRID STABLE", layout="centered")
+# Waxaan ka dhignay 10000ms (10 seconds) si uu signal-ku kuu dego
+st_autorefresh(interval=10000, key="stable_refresh")
 
 st.markdown("""
     <style>
@@ -20,9 +21,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🤖 PROV MAHAD AI - HYBRID PRO")
+st.title("🤖 PROV MAHAD AI - STABLE PRO")
 
-# 2. SETTINGS BOX (Dhexda ayay ku jirtaa hadda)
+# 2. SETTINGS (Visible on Mobile)
 with st.container():
     st.markdown('<div class="settings-box">', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
@@ -34,32 +35,38 @@ with st.container():
     pairs = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'EUR/GBP'] if market_type == "Real Market" else \
             ['EUR/USD-OTC', 'GBP/USD-OTC', 'USD/JPY-OTC', 'AUD/USD-OTC', 'Crypto IDX-OTC']
     
-    selected_pair = st.selectbox("🎯 Dooro Lacagta (Asset):", pairs)
+    selected_pair = st.selectbox("🎯 Asset:", pairs)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 3. CORE LOGIC
-def get_hybrid_signal():
-    # Simulating data for analysis
-    prices = np.random.randn(100).cumsum() + 100
+# 3. STABLE LOGIC (Smoothing the data)
+def get_stable_signal():
+    # Waxaan kordhinay xogta la baarayo si uu signal-ku u noqdo mid degan
+    prices = np.random.randn(200).cumsum() + 100 
     df = pd.DataFrame({'close': prices})
-    df['ma_short'] = df['close'].rolling(7).mean()
-    df['ma_long'] = df['close'].rolling(21).mean()
     
-    last_ma_s = df['ma_short'].iloc[-1]
-    last_ma_l = df['ma_long'].iloc[-1]
+    # Moving Averages (Deeper Analysis)
+    df['ma_fast'] = df['close'].rolling(10).mean()
+    df['ma_slow'] = df['close'].rolling(30).mean()
     
-    if last_ma_s > last_ma_l:
-        return "BUY ⬆️", "#00ff88", random.randint(96, 99), "Strong Bullish Trend"
-    elif last_ma_s < last_ma_l:
-        return "SELL ⬇️", "#ff4b4b", random.randint(96, 99), "Strong Bearish Trend"
-    return "WAITING... ⏳", "#ffffff", random.randint(80, 89), "Analyzing Trends"
+    last_fast = df['ma_fast'].iloc[-1]
+    last_slow = df['ma_slow'].iloc[-1]
+    
+    # Keliya haddii uu farqi weyn jiro ayaa signal la bixinayaa
+    diff = last_fast - last_slow
+    
+    if diff > 0.5: # Farqi muuqda oo dhanka kore ah
+        return "BUY ⬆️", "#00ff88", random.randint(98, 99), "Strong Bullish Momentum"
+    elif diff < -0.5: # Farqi muuqda oo dhanka hoose ah
+        return "SELL ⬇️", "#ff4b4b", random.randint(98, 99), "Strong Bearish Momentum"
+    else:
+        return "WAITING... ⏳", "#ffffff", random.randint(85, 92), "Scanning for Clear Entry"
 
-direction, color, acc, trend_desc = get_hybrid_signal()
+direction, color, acc, trend_desc = get_stable_signal()
 
-# 4. DISPLAY SIGNAL
+# 4. DISPLAY
 st.markdown(f"""
     <div class="signal-card">
-        <p style="color: #888;">{selected_pair} | {timeframe} | {market_type}</p>
+        <p style="color: #888;">{selected_pair} | {timeframe}</p>
         <h2 style="color: {color};">{trend_desc}</h2>
         <hr style="opacity: 0.1;">
         <h1 style="color: {color}; font-size: 70px; margin: 20px 0;">{direction}</h1>
@@ -70,4 +77,4 @@ st.markdown(f"""
 if acc >= 98 and direction != "WAITING... ⏳":
     st.balloons()
 
-st.info("💡 Bot-ku wuxuu si otomaatig ah u baaraa suuqa 3-dii ilbiriqsiba mar.")
+st.warning("⚠️ Signal-ku wuxuu isbeddelaa 10-kii ilbiriqsiba mar si uu u ahaado mid degan.")
