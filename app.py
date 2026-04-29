@@ -1,22 +1,24 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import time
 import json
+import asyncio
+import websockets
+from datetime import datetime
 
 # 1. Configuration & Security
-st.set_page_config(page_title="AI Auto-Trader Safe Mode", layout="centered")
+st.set_page_config(page_title="AI Auto-Trader Pro", layout="centered")
 
 try:
     USER_EMAIL = st.secrets["PO_EMAIL"]
     USER_PASS = st.secrets["PO_PASSWORD"]
 except:
-    st.warning("Fadlan ku dar Secrets-ka Streamlit Dashboard-ka.")
+    st.error("Secrets-ka laguma helin Streamlit! Fadlan ku dar PO_EMAIL iyo PO_PASSWORD.")
 
 if 'consecutive_losses' not in st.session_state:
     st.session_state.consecutive_losses = 0
 
-st.title("🤖 AI Auto-Trader (Safety Enabled)")
+st.title("🤖 AI Auto-Trader (Live Connection)")
 
 # 2. Risk Management (Sidebar)
 with st.sidebar:
@@ -28,42 +30,29 @@ with st.sidebar:
         st.error("🛑 BOT STOPPED: Xadkii khasaaraha waa la gaaray!")
         st.stop()
 
-# 3. Trading Logic (RSI & MA)
-def analyze_data():
-    # Tusaale xogta live-ka ah (Halkan Websocket ayaa geli lahaa)
-    prices = np.random.randn(100).cumsum() + 100
-    df = pd.DataFrame(prices, columns=['close'])
-    
-    # Simple Moving Average
-    df['ma_7'] = df['close'].rolling(window=7).mean()
-    df['ma_25'] = df['close'].rolling(window=25).mean()
-    
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
-    
-    # Shuruudda Signal-ka
-    if last['ma_7'] > last['ma_25'] and prev['ma_7'] <= prev['ma_25']:
-        return "CALL"  # BUY
-    elif last['ma_7'] < last['ma_25'] and prev['ma_7'] >= prev['ma_25']:
-        return "PUT"   # SELL
-    return "WAIT"
-
-# 4. Execution
-status = st.empty()
-if st.button("Start Auto-Trading"):
-    st.success(f"Lagu xiray: {USER_EMAIL}")
-    
-    while st.session_state.consecutive_losses < max_losses:
-        decision = analyze_data()
+# 3. Pocket Option Connection Logic
+async def connect_and_trade():
+    uri = "wss://api.pocketoption.com/socket.io/" # Hubi URL-ka saxda ah ee API-gaaga
+    async with websockets.connect(uri) as websocket:
+        # Authentication
+        auth = {"method": "auth", "email": USER_EMAIL, "password": USER_PASS}
+        await websocket.send(json.dumps(auth))
         
-        if decision != "WAIT":
-            status.warning(f"🎯 AI Signal: {decision}! Trade-ka waa la riday...")
-            # Halkan trade-ka dhabta ah ayaa ka dhacaya
-            time.sleep(60) # Sug natiijada
+        status_text.success(f"Lagu xiray: {USER_EMAIL}")
+        
+        while st.session_state.consecutive_losses < max_losses:
+            # Halkan bot-ka ayaa helaya xogta live-ka ah
+            msg = await websocket.recv()
+            data = json.loads(msg)
             
-            # Tusaale: Haddii trade-ku khasaaro
-            # st.session_state.consecutive_losses += 1
-        else:
-            status.info("⏳ Suuqay ayaa la baarayaa... fursad ammaan ah ayaa la sugayaa.")
-        
-        time.sleep(2)
+            # (Halkan waxaa geli doona Trading Logic-ga RSI/MA)
+            # Haddii signal la helo:
+            # await websocket.send(json.dumps({"action": "buy", "amount": trade_amount}))
+            
+            st.info("⏳ AI-du waxay baaraysaa suuqa dhabta ah...")
+            await asyncio.sleep(2)
+
+# 4. Interface Controls
+status_text = st.empty()
+if st.button("🚀 Start Live Auto-Trading"):
+    asyncio.run(connect_and_trade())
