@@ -1,11 +1,11 @@
 import streamlit as st
-import pd
+import pandas as pd
 import numpy as np
 import time
 import random
 from streamlit_autorefresh import st_autorefresh
 
-# 1. SETUP
+# 1. SETUP & UI SECURITY
 st.set_page_config(page_title="PROV MAHAD HYBRID", layout="centered")
 st_autorefresh(interval=3000, key="auto_refresh_hybrid")
 
@@ -22,7 +22,7 @@ st.markdown("""
 
 st.title("🤖 PROV MAHAD AI - HYBRID PRO")
 
-# 2. SETTINGS BOX (Hadda uma baahnid Sidebar)
+# 2. SETTINGS BOX (Dhexda ayay ku jirtaa hadda)
 with st.container():
     st.markdown('<div class="settings-box">', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
@@ -37,8 +37,9 @@ with st.container():
     selected_pair = st.selectbox("🎯 Dooro Lacagta (Asset):", pairs)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 3. ANALYSIS LOGIC
+# 3. CORE LOGIC
 def get_hybrid_signal():
+    # Simulating data for analysis
     prices = np.random.randn(100).cumsum() + 100
     df = pd.DataFrame({'close': prices})
     df['ma_short'] = df['close'].rolling(7).mean()
@@ -47,7 +48,6 @@ def get_hybrid_signal():
     last_ma_s = df['ma_short'].iloc[-1]
     last_ma_l = df['ma_long'].iloc[-1]
     
-    # Logic: Cross-over and Probability
     if last_ma_s > last_ma_l:
         return "BUY ⬆️", "#00ff88", random.randint(96, 99), "Strong Bullish Trend"
     elif last_ma_s < last_ma_l:
@@ -56,7 +56,7 @@ def get_hybrid_signal():
 
 direction, color, acc, trend_desc = get_hybrid_signal()
 
-# 4. DISPLAY
+# 4. DISPLAY SIGNAL
 st.markdown(f"""
     <div class="signal-card">
         <p style="color: #888;">{selected_pair} | {timeframe} | {market_type}</p>
