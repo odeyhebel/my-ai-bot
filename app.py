@@ -1,81 +1,52 @@
-import streamlit as st
-import random
+import pandas as pd
+import numpy as np
 import time
 
-# Pro UI Setup
-st.set_page_config(page_title="PROV MAHAD AI AUTO-TREND", layout="centered")
+# 1. Liiska Pairs-ka (7 Real & 10 OTC)
+REAL_MARKET_PAIRS = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'EUR/GBP', 'USD/CAD', 'NZD/USD']
+OTC_MARKET_PAIRS = ['EUR/USD-OTC', 'GBP/USD-OTC', 'USD/JPY-OTC', 'AUD/USD-OTC', 'EUR/GBP-OTC', 
+                    'USD/CHF-OTC', 'NZD/USD-OTC', 'USD/CAD-OTC', 'EUR/JPY-OTC', 'GBP/JPY-OTC']
 
-st.markdown("""
-    <style>
-    .main { background-color: #050a0e; }
-    .signal-card { padding: 25px; border-radius: 20px; text-align: center; border: 1px solid #1e3a4c; background: #0b151e; margin-bottom: 20px; }
-    .trend-pill { padding: 5px 15px; border-radius: 50px; font-size: 14px; font-weight: bold; }
-    .bullish { background: #00ff8822; color: #00ff88; border: 1px solid #00ff88; }
-    .bearish { background: #ff4b4b22; color: #ff4b4b; border: 1px solid #ff4b4b; }
-    </style>
-    """, unsafe_allow_html=True)
+# 2. Waqtiyada Ganacsiga (Expiraion Times)
+TIME_FRAMES = ['5s', '15s', '30s', '1m', '2m', '3m', '5m']
 
-st.title("🤖 PROV MAHAD AI PRO (AUTO-TREND)")
-
-# Sidebar Settings
-with st.sidebar:
-    st.header("Settings")
+def analyze_strategy(df):
+    """
+    Logic-ga falanqaynta (RSI, MA, Stochastic)
+    """
+    # Moving Averages
+    df['ma_fast'] = df['close'].rolling(window=7).mean()
+    df['ma_mid'] = df['close'].rolling(window=14).mean()
     
-    # 7 Lacagood oo Real ah iyo 7 Lacagood oo OTC ah
-    pair = st.selectbox("Currency Pair", [
-        "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/GBP", "NZD/USD",
-        "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "AUD/USD OTC", "USD/CAD OTC", "EUR/GBP OTC", "Crypto IDX OTC"
-    ])
+    # RSI
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    df['rsi'] = 100 - (100 / (1 + (gain/loss)))
+
+    # Stochastic
+    low_min = df['low'].rolling(window=14).min()
+    high_max = df['high'].rolling(window=14).max()
+    df['k_line'] = 100 * ((df['close'] - low_min) / (high_max - low_min))
+    df['d_line'] = df['k_line'].rolling(window=3).mean()
+
+    last = df.iloc[-1]
     
-    timeframe = st.radio("Time Frame", ["15 SEC", "1 MIN", "5 MIN"])
+    # Logic: BUY
+    if last['ma_fast'] > last['ma_mid'] and last['rsi'] < 40 and last['k_line'] > last['d_line']:
+        return "BUY"
+    # Logic: SELL
+    elif last['ma_fast'] < last['ma_mid'] and last['rsi'] > 60 and last['k_line'] < last['d_line']:
+        return "SELL"
+    
+    return "WAIT"
 
-# 1. AI Trend Detection Engine (Simulated for Mobile Compatibility)
-def detect_trend():
-    # Logic: Bot-ku wuxuu barbardhigayaa qiimaha hadda iyo Moving Averages
-    trends = ["Bullish (Kor)", "Bearish (Hoos)", "Sideways"]
-    weights = [45, 45, 10] 
-    return random.choices(trends, weights=weights)[0]
+# --- LOOP-KA SHAQADA ---
+print(f"Bot-ku wuxuu bilaabayaa falanqaynta {len(REAL_MARKET_PAIRS)} Real Pairs iyo {len(OTC_MARKET_PAIRS)} OTC Pairs...")
 
-if st.button("🚀 GENERATE AUTO-TREND SIGNAL"):
-    with st.spinner('AI is detecting market trend and indicators...'):
-        time.sleep(2.5)
-        
-        current_trend = detect_trend()
-        accuracy = random.randint(96, 99)
-        
-        # 2. Decision Logic based on Auto-Trend
-        if "Bullish" in current_trend:
-            direction = "BUY ⬆️"
-            color = "#00ff88"
-            trend_class = "bullish"
-        elif "Bearish" in current_trend:
-            direction = "SELL ⬇️"
-            color = "#ff4b4b"
-            trend_class = "bearish"
-        else:
-            direction = random.choice(["BUY ⬆️", "SELL ⬇️"])
-            accuracy = random.randint(90, 94)
-            color = "#ffffff"
-            trend_class = ""
-
-        # 3. Output UI
-        st.markdown(f"""
-            <div class="signal-card">
-                <p style="opacity: 0.7;">{pair} | {timeframe}</p>
-                <div style="margin: 10px 0;">
-                    <span class="trend-pill {trend_class}">Detected Trend: {current_trend}</span>
-                </div>
-                <h1 style="color: {color}; font-size: 70px; margin: 10px 0;">{direction}</h1>
-                <h3 style="color: {color};">Accuracy: {accuracy}%</h3>
-                <hr style="opacity: 0.1;">
-                <p style="font-size: 13px; opacity: 0.6;">
-                AI Filter: Signal is only approved if it aligns with the detected {current_trend} momentum.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        if accuracy >= 98:
-            st.balloons()
-            st.success("🔥 STRONG SIGNAL: Trend-ka iyo AI-da waa is waafaqsan yihiin!")
-
-st.info("💡 Pro Tip: Iska hubi in lacagta aad bot-ka ka doorato ay la mid tahay tan aad Pocket Option ka furtay.")
+# Tusaale ahaan sida uu u dhex wareegayo pairs-ka
+for pair in REAL_MARKET_PAIRS + OTC_MARKET_PAIRS:
+    for tf in TIME_FRAMES:
+        print(f"Checking {pair} on {tf} timeframe...")
+        # Halkan bot-ku wuxuu ka akhrin lahaa xogta live-ka ah (API call)
+        time.sleep(0.1) 
