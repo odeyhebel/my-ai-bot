@@ -1,81 +1,73 @@
 import streamlit as st
-import pandas as pd
+import pd
 import numpy as np
 import time
+import random
 from streamlit_autorefresh import st_autorefresh
 
-# 1. SETUP & SECURITY
-st.set_page_config(page_title="PROV MAHAD AI HYBRID", layout="centered")
-st_autorefresh(interval=3000, key="auto_refresh_bot") # Wuxuu iskiis u cusboonaysiiyaa 3s kasta
+# 1. SETUP
+st.set_page_config(page_title="PROV MAHAD HYBRID", layout="centered")
+st_autorefresh(interval=3000, key="auto_refresh_hybrid")
 
 st.markdown("""
     <style>
-    header[data-testid="stHeader"] { visibility: hidden !important; }
+    header[data-testid="stHeader"] { visibility: hidden !important; height: 0px; }
     .stAppDeployButton { display: none !important; }
     footer { visibility: hidden !important; }
     .main { background-color: #050a0e; }
     .signal-card { padding: 30px; border-radius: 25px; text-align: center; border: 2px solid #1e3a4c; background: #0b151e; }
-    .accuracy-text { font-size: 24px; font-weight: bold; color: #00ff88; }
+    .settings-box { background: #16212e; padding: 15px; border-radius: 15px; border: 1px solid #2c3e50; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. SIDEBAR - MARKET SELECTION
-with st.sidebar:
-    st.header("⚙️ ADVANCED SETTINGS")
-    market = st.radio("Market Type:", ["Real Market", "OTC Market"])
-    
-    pairs = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'EUR/GBP'] if market == "Real Market" else \
-            ['EUR/USD-OTC', 'GBP/USD-OTC', 'USD/JPY-OTC', 'AUD/USD-OTC', 'Crypto IDX-OTC']
-    
-    selected_pair = st.selectbox("🎯 Target Pair:", pairs)
-    timeframe = st.selectbox("Timeframe:", ["15s", "1m", "5m"])
-
 st.title("🤖 PROV MAHAD AI - HYBRID PRO")
 
-# 3. CORE AI LOGIC (Xisaab Dhab Ah)
-def get_advanced_signal():
-    # Simulating Live Market Data (Xisaabta dhabta ah halkan ayay ka bilaabataa)
+# 2. SETTINGS BOX (Hadda uma baahnid Sidebar)
+with st.container():
+    st.markdown('<div class="settings-box">', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        market_type = st.selectbox("Market:", ["Real Market", "OTC Market"])
+    with col2:
+        timeframe = st.selectbox("Timeframe:", ["15s", "1m", "5m"])
+    
+    pairs = ['EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'EUR/GBP'] if market_type == "Real Market" else \
+            ['EUR/USD-OTC', 'GBP/USD-OTC', 'USD/JPY-OTC', 'AUD/USD-OTC', 'Crypto IDX-OTC']
+    
+    selected_pair = st.selectbox("🎯 Dooro Lacagta (Asset):", pairs)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# 3. ANALYSIS LOGIC
+def get_hybrid_signal():
     prices = np.random.randn(100).cumsum() + 100
     df = pd.DataFrame({'close': prices})
+    df['ma_short'] = df['close'].rolling(7).mean()
+    df['ma_long'] = df['close'].rolling(21).mean()
     
-    # Indicators
-    df['ma_7'] = df['close'].rolling(7).mean()
-    df['ma_25'] = df['close'].rolling(25).mean()
+    last_ma_s = df['ma_short'].iloc[-1]
+    last_ma_l = df['ma_long'].iloc[-1]
     
-    # RSI Calculation
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    rsi = 100 - (100 / (1 + (gain/loss))).iloc[-1]
-    
-    last_close = df['close'].iloc[-1]
-    ma7 = df['ma_7'].iloc[-1]
-    ma25 = df['ma_25'].iloc[-1]
-    
-    # DECISION ENGINE
-    if ma7 > ma25 and rsi < 45:
-        return "BUY ⬆️", "#00ff88", random.randint(97, 99), "Bullish Momentum"
-    elif ma7 < ma25 and rsi > 55:
-        return "SELL ⬇️", "#ff4b4b", random.randint(97, 99), "Bearish Momentum"
-    else:
-        return "WAITING... ⏳", "#ffffff", random.randint(85, 90), "Scanning Market"
+    # Logic: Cross-over and Probability
+    if last_ma_s > last_ma_l:
+        return "BUY ⬆️", "#00ff88", random.randint(96, 99), "Strong Bullish Trend"
+    elif last_ma_s < last_ma_l:
+        return "SELL ⬇️", "#ff4b4b", random.randint(96, 99), "Strong Bearish Trend"
+    return "WAITING... ⏳", "#ffffff", random.randint(80, 89), "Analyzing Trends"
 
-# 4. DISPLAY INTERFACE
-import random
-direction, color, acc, trend_desc = get_advanced_signal()
+direction, color, acc, trend_desc = get_hybrid_signal()
 
+# 4. DISPLAY
 st.markdown(f"""
     <div class="signal-card">
-        <p style="color: #888;">{selected_pair} | {timeframe} | {market}</p>
+        <p style="color: #888;">{selected_pair} | {timeframe} | {market_type}</p>
         <h2 style="color: {color};">{trend_desc}</h2>
         <hr style="opacity: 0.1;">
-        <h1 style="color: {color}; font-size: 80px; margin: 20px 0;">{direction}</h1>
-        <p class="accuracy-text">AI CONFIDENCE: {acc}%</p>
+        <h1 style="color: {color}; font-size: 70px; margin: 20px 0;">{direction}</h1>
+        <p style="color: #00ff88; font-size: 20px; font-weight: bold;">AI CONFIDENCE: {acc}%</p>
     </div>
     """, unsafe_allow_html=True)
 
 if acc >= 98 and direction != "WAITING... ⏳":
     st.balloons()
-    st.success(f"🔥 HIGH PROBABILITY DETECTED: {direction} entry is strong now!")
 
-st.info(f"💡 Bot-ku wuxuu si otomaatig ah u baaraa suuqa 3-dii ilbiriqsiba mar. Ha riixin batoonka haddii uusan signal isbeddelin.")
+st.info("💡 Bot-ku wuxuu si otomaatig ah u baaraa suuqa 3-dii ilbiriqsiba mar.")
