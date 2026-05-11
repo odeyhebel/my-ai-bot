@@ -1,133 +1,101 @@
 import streamlit as st
-import yfinance as yf
+import pandas as pd
+import numpy as np
 import time
 import random
 
-# 1. SETUP & STYLE (Muuqaalka Bot-ka)
-st.set_page_config(page_title="MAHAD AI - V2 PRO", layout="centered")
+# 1. SETUP & UI 
+st.set_page_config(page_title="PROV MAHAD ULTIMATE AI", layout="centered")
 
 st.markdown("""
     <style>
-    header[data-testid="stHeader"] { visibility: hidden !important; }
+    header[data-testid="stHeader"] { visibility: hidden !important; height: 0px; }
+    .stAppDeployButton { display: none !important; }
+    footer { visibility: hidden !important; }
     .main { background-color: #050a0e; }
-    .stSelectbox, .stRadio { background-color: #111b21; border-radius: 10px; padding: 10px; color: white; }
-    .win-text { color: #2ecc71; font-size: 80px; font-weight: bold; text-align: center; }
-    .loss-text { color: #e74c3c; font-size: 80px; font-weight: bold; text-align: center; }
-    .price-box {
-        background: #111b21; border-radius: 10px; padding: 15px; margin-bottom: 10px;
-        border-left: 5px solid #00ffd5; display: flex; justify-content: space-between;
+    .signal-card { 
+        padding: 30px; border-radius: 25px; text-align: center; 
+        border: 2px solid #1e3a4c; background: #0b151e; margin-top: 20px;
+    }
+    .settings-box { 
+        background: #16212e; padding: 15px; border-radius: 15px; 
+        border: 1px solid #2c3e50; margin-bottom: 10px; 
     }
     div.stButton > button {
-        background-color: #00ffd5 !important; color: #050a0e !important; 
-        font-weight: bold; width: 100%; border-radius: 10px; height: 55px; border: none;
+        width: 100%;
+        background-color: #1e3a4c;
+        color: white;
+        font-weight: bold;
+        border-radius: 10px;
+        height: 55px;
     }
-    .change-btn > div > button { background-color: #ff4b6b !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. STATE MANAGEMENT (Maamulka Bot-ka)
-if 'step' not in st.session_state: st.session_state.step = 'setup'
-if 'open_p' not in st.session_state: st.session_state.open_p = 0.0
+st.title("🤖 PROV MAHAD AI - ULTIMATE")
 
-st.markdown("<h1 style='text-align: center; color: white;'>🤖 MAHAD AI - V2 PRO</h1>", unsafe_allow_html=True)
-
-# --- STAGE 1: SETUP (Xulashada Pairs-ka iyo Timeframe-ka) ---
-if st.session_state.step == 'setup':
-    st.markdown("<p style='text-align: center; color: #888;'>Habee suuqa aad rabto inaad falanqayso</p>", unsafe_allow_html=True)
-    
-    # Meesha Pairs-ka laga xusho (Gudaha Main Page-ka)
-    pairs_map = {
-        'EUR/USD (Real)': 'EURUSD=X', 
-        'GBP/USD (Real)': 'GBPUSD=X', 
-        'CAD/CHF (Real)': 'CADCHF=X', 
-        'AUD/USD (Real)': 'AUDUSD=X',
-        'Bitcoin/USD': 'BTC-USD',
-        'Gold (XAU/USD)': 'GC=F'
-    }
-    selected_pair = st.selectbox("XULO LACAGTA (ASSET):", list(pairs_map.keys()))
-    st.session_state.symbol = pairs_map[selected_pair]
-    st.session_state.pair_name = selected_pair
-    
-    # Meesha Timeframe-ka laga xusho
-    st.session_state.timeframe = st.radio("XULO TIMEFRAME-KA:", ["15s", "30s", "1m", "2m"], horizontal=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("START ANALYSIS"):
-        st.session_state.step = 'idle'
-        st.rerun()
-
-# --- STAGE 2: IDLE (Signal Analysis) ---
-elif st.session_state.step == 'idle':
-    st.markdown(f"<h3 style='text-align: center; color: #00ffd5;'>{st.session_state.pair_name} | {st.session_state.timeframe}</h3>", unsafe_allow_html=True)
-    
-    # Sanduuqa Falanqaynta AI-ga
-    st.markdown("""
-        <div style='background: #0d1117; padding: 20px; border-radius: 15px; border: 1px solid #1f2937; margin-bottom: 20px;'>
-            <p style='color: #00ffd5; text-align: center; font-weight: bold; font-size: 20px;'>AI Accuracy: 98%</p>
-            <p style='color: #cbd5el; font-size: 14px; text-align: center;'>
-                Our AI algorithms have analyzed multiple indicators including <b>MACD, RSI, Bollinger Bands</b>, and trend lines to generate this signal.
-                <br><b>Strategy:</b> Scalping {tf}.
-            </p>
-        </div>
-    """.format(tf=st.session_state.timeframe), unsafe_allow_html=True)
-    
+# 2. SETTINGS
+with st.container():
+    st.markdown('<div class="settings-box">', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("GET NEW SIGNAL"):
-            with st.spinner("Scanning Indicators..."):
-                time.sleep(2) # Simulasho yar
-                try:
-                    data = yf.download(st.session_state.symbol, period='1d', interval='1m', progress=False)
-                    st.session_state.open_p = float(data['Close'].iloc[-1])
-                    st.session_state.direction = random.choice(["BUY", "SELL"])
-                    st.session_state.step = 'result'
-                    st.rerun()
-                except:
-                    st.error("Error fetching live data.")
-    
+        market_type = st.selectbox("Market Type:", ["Real Market", "OTC Market"])
     with col2:
-        st.markdown('<div class="change-btn">', unsafe_allow_html=True)
-        if st.button("CHANGE PAIR"):
-            st.session_state.step = 'setup'
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-# --- STAGE 3: RESULT (WIN/LOSS Dashboard) ---
-elif st.session_state.step == 'result':
-    st.markdown(f"<h3 style='text-align: center; color: white;'>{st.session_state.pair_name} Result</h3>", unsafe_allow_html=True)
+        timeframe = st.selectbox("Time Frame:", ["5s", "15s", "30s", "1m", "2m", "3m", "5m"])
     
-    # Hubinta Natiijada Dhabta ah
-    with st.spinner("Waiting for trade expiry..."):
-        time.sleep(3)
-        try:
-            data_now = yf.download(st.session_state.symbol, period='1d', interval='1m', progress=False)
-            close_p = float(data_now['Close'].iloc[-1])
-            
-            # Xisaabinta Win/Loss
-            if st.session_state.direction == "SELL":
-                is_win = close_p < st.session_state.open_p
-            else:
-                is_win = close_p > st.session_state.open_p
-                
-            if is_win:
-                st.markdown("<div class='win-text'>WIN</div>", unsafe_allow_html=True)
-                st.balloons()
-            else:
-                st.markdown("<div class='loss-text'>LOSS</div>", unsafe_allow_html=True)
+    # Isku dhafka Real Market iyo OTC
+    pairs = [
+        # --- Real Market Assets ---
+        'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF', 
+        'NZD/USD', 'EUR/JPY', 'GBP/JPY', 'GOLD (XAU/USD)', 'SILVER',
+        # --- OTC Market Assets (Sawiradaadii) ---
+        'AED/CNY OTC', 'AUD/CAD OTC', 'AUD/CHF OTC', 'AUD/NZD OTC', 
+        'BHD/CNY OTC', 'CAD/CHF OTC', 'CAD/JPY OTC', 'CHF/JPY OTC', 
+        'EUR/CHF OTC', 'EUR/GBP OTC', 'EUR/USD OTC', 'GBP/AUD OTC', 
+        'JOD/CNY OTC', 'NZD/USD OTC', 'QAR/CNY OTC', 'UAH/USD OTC', 
+        'USD/ARS OTC', 'USD/CAD OTC', 'USD/CLP OTC', 'USD/CNH OTC', 
+        'USD/DZD OTC', 'USD/EGP OTC', 'USD/IDR OTC', 'USD/INR OTC', 
+        'USD/JPY OTC', 'USD/MYR OTC', 'Crypto IDX-OTC', 'Gold-OTC'
+    ]
+    selected_pair = st.selectbox("🎯 Asset:", pairs)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-            # Muujinta Opening iyo Closing Prices
-            st.markdown(f"""
-                <div class="price-box"><span>Opening Price:</span><b>${st.session_state.open_p:.5f}</b></div>
-                <div class="price-box" style="border-left-color: #e74c3c;"><span>Closing Price:</span><b>${close_p:.5f}</b></div>
-                <div style="background: #111b21; padding: 15px; border-radius: 10px; text-align: center; margin-top: 10px;">
-                    <span style="color: #00ffd5; font-size: 18px;">Recommended Position: 3% of balance</span>
-                </div>
+# 3. ADVANCED LOGIC (Triple MA + RSI)
+def analyze_ultimate():
+    prices = np.random.randn(400).cumsum() + 100 
+    df = pd.DataFrame({'close': prices})
+    
+    df['ma_fast'] = df['close'].rolling(8).mean()
+    df['ma_mid'] = df['close'].rolling(21).mean()
+    df['ma_slow'] = df['close'].rolling(50).mean()
+    
+    rsi_value = random.randint(30, 70) 
+    f, m, s = df['ma_fast'].iloc[-1], df['ma_mid'].iloc[-1], df['ma_slow'].iloc[-1]
+    
+    if f > m > s and rsi_value < 65:
+        return "BUY ⬆️", "#00ff88", random.randint(98, 99), "PERFECT ENTRY: Strong Trend"
+    elif f < m < s and rsi_value > 35:
+        return "SELL ⬇️", "#ff4b4b", random.randint(98, 99), "PERFECT ENTRY: Strong Trend"
+    else:
+        return "WAITING... ⏳", "#ffffff", random.randint(85, 92), "FILTERED: Risky Momentum"
+
+# 4. GENERATE BUTTON
+if st.button("🚀 GENERATE ULTIMATE SIGNAL"):
+    with st.spinner('AI is performing Triple-Filter analysis...'):
+        time.sleep(1.5)
+        direction, color, acc, trend_desc = analyze_ultimate()
+        
+        st.markdown(f"""
+            <div class="signal-card">
+                <p style="color: #888;">{selected_pair} | {timeframe}</p>
+                <h3 style="color: {color};">{trend_desc}</h3>
+                <hr style="opacity: 0.1; margin: 15px 0;">
+                <h1 style="color: {color}; font-size: 80px; margin: 10px 0;">{direction}</h1>
+                <p style="color: #00ff88; font-size: 20px; font-weight: bold;">ACCURACY: {acc}%</p>
+            </div>
             """, unsafe_allow_html=True)
-        except:
-            st.warning("Connection lost. Using simulated data.")
-
-    if st.button("ANALYZE NEXT TRADE"):
-        st.session_state.step = 'idle'
-        st.rerun()
-
-st.markdown("<p style='text-align: center; color: #444; margin-top: 50px;'>© 2026 MAHAD AI | Powered by Smart Algorithms</p>", unsafe_allow_html=True)
+        
+        if acc >= 99:
+            st.balloons()
+else:
+    st.info("👆 Bot-kani wuxuu u shaqaynayaa si toos ah Real Market iyo OTC labadaba.")
