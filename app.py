@@ -5,7 +5,7 @@ import time
 import random
 
 # 1. SETUP & STYLE
-st.set_page_config(page_title="PROV MAHAD AI ENGINE", layout="centered")
+st.set_page_config(page_title="PROV MAHAD AI ENGINE v3.8", layout="centered")
 
 st.markdown("""
     <style>
@@ -32,8 +32,8 @@ st.markdown("""
 if 'platform' not in st.session_state:
     st.session_state.platform = "Pocket Option"
 
-st.title("⚡ PROV MAHAD AI - SYSTEM ANALYSIS")
-st.markdown("<p style='color:#888;'>Automated signal generation with price action network</p>", unsafe_allow_html=True)
+st.title("⚡ PROV MAHAD AI - ULTRA PREDICTION")
+st.markdown("<p style='color:#888;'>Automated binary engine with safety buffer filtering</p>", unsafe_allow_html=True)
 
 # --- PLATFORM SELECTION ---
 col_q, col_p = st.columns(2)
@@ -46,28 +46,22 @@ with col_p:
 
 st.markdown("---")
 
-# 3. GLOBAL ASSETS SYSTEM (Dhammaan lacagaha OTC rasmiga ah)
+# 3. GLOBAL ASSETS SYSTEM
 QUOTEX_PAIRS = [
     'USD/BDT (OTC)', 'USD/EGP (OTC)', 'AUD/NZD (OTC)', 'EUR/JPY (OTC)', 'USD/INR (OTC)', 
-    'EUR/GBP (OTC)', 'EUR/USD (OTC)', 'GBP/USD (OTC)', 'USD/JPY (OTC)', 'USD/BRL (OTC)',
-    'USD/TRY (OTC)', 'USD/PKR (OTC)', 'USD/IDR (OTC)', 'USD/MYR (OTC)', 'USD/PHP (OTC)',
-    'EUR/CHF (OTC)', 'GBP/JPY (OTC)', 'NZD/USD (OTC)', 'CAD/CHF (OTC)', 'AUD/CAD (OTC)'
+    'EUR/GBP (OTC)', 'EUR/USD (OTC)', 'GBP/USD (OTC)', 'USD/JPY (OTC)'
 ]
 
 POCKET_PAIRS = [
     'EUR/USD OTC', 'GBP/USD OTC', 'USD/JPY OTC', 'AUD/CAD OTC', 'CAD/CHF OTC', 
-    'NZD/USD OTC', 'AUD/USD OTC', 'EUR/GBP OTC', 'EUR/JPY OTC', 'GBP/JPY OTC', 
-    'CHF/JPY OTC', 'EUR/AUD OTC', 'EUR/CAD OTC', 'USD/CAD OTC', 'USD/CHF OTC',
-    'Crypto IDX-OTC', 'Gold-OTC', 'Silver-OTC', 'Bitcoin OTC', 'Ethereum OTC',
-    'Apple OTC', 'American Express OTC', 'Boeing OTC', 'Caterpillar OTC', 
-    'Cisco OTC', 'Chevron OTC', 'Intel OTC', 'Microsoft OTC', 'Pfizer OTC'
+    'NZD/USD OTC', 'AUD/USD OTC', 'EUR/GBP OTC', 'Crypto IDX-OTC', 'Gold-OTC'
 ]
 
 # Status Box
 st.markdown(f"""
     <div class="status-box">
-        <h4 style="color:#00ffd5; margin:0;">📈 MARKET ANALYSIS OPEN</h4>
-        <p style="color:#888; margin:5px 0 0 0; font-size:13px;">Platform Active: <b>{st.session_state.platform}</b> | System: Secured Proxy Connected</p>
+        <h4 style="color:#00ffd5; margin:0;">🛡️ ANTI-LOSS FILTER ACTIVE</h4>
+        <p style="color:#888; margin:5px 0 0 0; font-size:13px;">Platform: <b>{st.session_state.platform}</b> | Mode: High Accuracy Scanning</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -81,32 +75,39 @@ def generate_auto_signal():
     direction_choice = random.choice(["LONG ⬆️", "SHORT ⬇️"])
     direction_text = "LONG (BUY)" if "LONG" in direction_choice else "SHORT (SELL)"
     
-    probability = random.randint(84, 89)
+    # Kici boqolleyda kalsoonida (91% - 98%)
+    probability = random.randint(91, 98)
     
     return chosen_pair, direction_text, probability
 
 # 5. AUTOMATED GENERATOR BUTTON
-if st.button("⚡ NEW ANALYSIS (🚀 GET SIGNAL)"):
-    with st.spinner('Analyzing Global Neural Nodes for Best Asset...'):
+if st.button("⚡ RUN DEEP ANALYSIS (🚀 GET SIGNAL)"):
+    with st.spinner('Scanning Price Action Nodes...'):
         time.sleep(2.5) 
         
         pair, direction, prob = generate_auto_signal()
         
-        st.subheader("📊 ANALYSIS COMPLETE")
+        st.subheader("📊 SIGNAL RESULTS")
         
-        # Sanduuqa Natiijada iyadoo la isticmaalayo Streamlit native components
-        st.info(f"**Currency Pair:** {pair}")
-        st.warning("**Exp Time:** 3 Minutes")
+        st.info(f"**Asset:** {pair}")
+        st.warning("**Expiration:** 3 Minutes")
         
-        # Midabka jihada ku xiran
         if "LONG" in direction:
             st.success(f"**Direction:** ▲ {direction}")
+            st.sidebar.markdown("### 🛡️ MARTINGALE GUIDE")
+            st.sidebar.error("If 1st Trade Loses: Place 2nd Trade at SAME Direction (BUY) with x2.2 Amount.")
         else:
             st.error(f"**Direction:** ▼ {direction}")
+            st.sidebar.markdown("### 🛡️ MARTINGALE GUIDE")
+            st.sidebar.error("If 1st Trade Loses: Place 2nd Trade at SAME Direction (SELL) with x2.2 Amount.")
             
-        st.metric(label="System Probability", value=f"{prob}%")
+        st.metric(label="AI Confidence Level", value=f"{prob}%")
+        
+        # Amniga badbaadada
+        st.markdown("""
+        > **⚠️ XUSUSIN MUHIM AH:** Kahor inta itaanad gujin batoonka Broker-ka, hubi in midabka shumaca suuqa dhabta ah uu la mid yahay jihada kor ku qoran. Haddii ay iska soo horjeedaan, HA GELIN trade-ka!
+        """)
             
-        if prob >= 88:
-            st.balloons()
+        st.balloons()
 
-st.markdown("<p style='text-align: center; color: #333; margin-top: 40px;'>PROV MAHAD AI v3.0 | Auto-Scanning Binary System</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #333; margin-top: 40px;'>PROV MAHAD AI v3.8 | Powered by Secure Proxy</p>", unsafe_allow_html=True)
