@@ -13,10 +13,6 @@ st.markdown("""
     .stAppDeployButton { display: none !important; }
     footer { visibility: hidden !important; }
     .main { background-color: #050a0e; }
-    .signal-card { 
-        padding: 30px; border-radius: 25px; text-align: center; 
-        border: 2px solid #00ffd5; background: #0b151e; margin-top: 20px;
-    }
     .status-box { 
         background: #16212e; padding: 15px; border-radius: 15px; 
         border: 1px solid #2c3e50; margin-bottom: 20px; text-align: center;
@@ -50,7 +46,7 @@ with col_p:
 
 st.markdown("---")
 
-# 3. GLOBAL ASSETS SYSTEM (Ballaaran - Dhammaan lacagaha OTC rasmiga ah)
+# 3. GLOBAL ASSETS SYSTEM (Dhammaan lacagaha OTC rasmiga ah)
 QUOTEX_PAIRS = [
     'USD/BDT (OTC)', 'USD/EGP (OTC)', 'AUD/NZD (OTC)', 'EUR/JPY (OTC)', 'USD/INR (OTC)', 
     'EUR/GBP (OTC)', 'EUR/USD (OTC)', 'GBP/USD (OTC)', 'USD/JPY (OTC)', 'USD/BRL (OTC)',
@@ -83,37 +79,32 @@ def generate_auto_signal():
         chosen_pair = random.choice(POCKET_PAIRS)
         
     direction_choice = random.choice(["LONG ⬆️", "SHORT ⬇️"])
-    color = "#00ff88" if "LONG" in direction_choice else "#ff4b4b"
-    direction_text = "LONG" if "LONG" in direction_choice else "SHORT"
+    direction_text = "LONG (BUY)" if "LONG" in direction_choice else "SHORT (SELL)"
     
     probability = random.randint(84, 89)
     
-    return chosen_pair, direction_text, color, probability
+    return chosen_pair, direction_text, probability
 
 # 5. AUTOMATED GENERATOR BUTTON
 if st.button("⚡ NEW ANALYSIS (🚀 GET SIGNAL)"):
     with st.spinner('Analyzing Global Neural Nodes for Best Asset...'):
         time.sleep(2.5) 
         
-        pair, direction, card_color, prob = generate_auto_signal()
+        pair, direction, prob = generate_auto_signal()
         
-        st.markdown(f"""
-            <div class="signal-card">
-                <p style="color: #888; font-size: 13px; letter-spacing:1px; margin-bottom: 15px;">ANALYSIS COMPLETE</p>
-                
-                <p style="color: #64748b; margin-bottom: 2px; font-size:14px;">Currency Pair</p>
-                <h2 style="color: #ffffff; background: #16212e; padding: 10px; border-radius: 10px; display: inline-block; min-width: 250px; border: 1px solid #2c3e50; margin-top:0;">{pair}</h2>
-                
-                <p style="color: #64748b; margin-bottom: 2px; margin-top:15px; font-size:14px;">Exp Time</p>
-                <h3 style="color: #ffffff; margin-top:0; font-weight:bold;">3 Minutes</h3>
-                
-                <p style="color: #64748b; margin-bottom: 2px; margin-top:15px; font-size:14px;">Direction</p>
-                <h1 style="color: {card_color}; font-size: 55px; margin-top:0; font-weight: bold; letter-spacing: 2px;">▲ {direction}</h1>
-                
-                <p style="color: #64748b; margin-bottom: 2px; margin-top:15px; font-size:14px;">Probability</p>
-                <p style="color: #00ffd5; font-size: 26px; font-weight: bold; margin-top:0;">{prob}%</p>
-            </div>
-            """, unsafe_allow_html=True)
+        st.subheader("📊 ANALYSIS COMPLETE")
+        
+        # Sanduuqa Natiijada iyadoo la isticmaalayo Streamlit native components
+        st.info(f"**Currency Pair:** {pair}")
+        st.warning("**Exp Time:** 3 Minutes")
+        
+        # Midabka jihada ku xiran
+        if "LONG" in direction:
+            st.success(f"**Direction:** ▲ {direction}")
+        else:
+            st.error(f"**Direction:** ▼ {direction}")
+            
+        st.metric(label="System Probability", value=f"{prob}%")
             
         if prob >= 88:
             st.balloons()
