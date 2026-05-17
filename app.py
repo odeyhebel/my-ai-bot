@@ -50,9 +50,22 @@ with col_p:
 
 st.markdown("---")
 
-# 3. GLOBAL ASSETS SYSTEM
-QUOTEX_PAIRS = ['USD/BDT (OTC)', 'USD/EGP (OTC)', 'AUD/NZD (OTC)', 'EUR/JPY', 'USD/INR (OTC)', 'EUR/GBP', 'EUR/USD', 'GBP/USD', 'USD/JPY']
-POCKET_PAIRS = ['EUR/USD OTC', 'GBP/USD OTC', 'USD/JPY OTC', 'AUD/CAD OTC', 'CAD/CHF OTC', 'Crypto IDX-OTC', 'Gold-OTC', 'GBP/USD', 'EUR/USD']
+# 3. GLOBAL ASSETS SYSTEM (Ballaaran - Dhammaan lacagaha OTC rasmiga ah)
+QUOTEX_PAIRS = [
+    'USD/BDT (OTC)', 'USD/EGP (OTC)', 'AUD/NZD (OTC)', 'EUR/JPY (OTC)', 'USD/INR (OTC)', 
+    'EUR/GBP (OTC)', 'EUR/USD (OTC)', 'GBP/USD (OTC)', 'USD/JPY (OTC)', 'USD/BRL (OTC)',
+    'USD/TRY (OTC)', 'USD/PKR (OTC)', 'USD/IDR (OTC)', 'USD/MYR (OTC)', 'USD/PHP (OTC)',
+    'EUR/CHF (OTC)', 'GBP/JPY (OTC)', 'NZD/USD (OTC)', 'CAD/CHF (OTC)', 'AUD/CAD (OTC)'
+]
+
+POCKET_PAIRS = [
+    'EUR/USD OTC', 'GBP/USD OTC', 'USD/JPY OTC', 'AUD/CAD OTC', 'CAD/CHF OTC', 
+    'NZD/USD OTC', 'AUD/USD OTC', 'EUR/GBP OTC', 'EUR/JPY OTC', 'GBP/JPY OTC', 
+    'CHF/JPY OTC', 'EUR/AUD OTC', 'EUR/CAD OTC', 'USD/CAD OTC', 'USD/CHF OTC',
+    'Crypto IDX-OTC', 'Gold-OTC', 'Silver-OTC', 'Bitcoin OTC', 'Ethereum OTC',
+    'Apple OTC', 'American Express OTC', 'Boeing OTC', 'Caterpillar OTC', 
+    'Cisco OTC', 'Chevron OTC', 'Intel OTC', 'Microsoft OTC', 'Pfizer OTC'
+]
 
 # Status Box
 st.markdown(f"""
@@ -64,18 +77,15 @@ st.markdown(f"""
 
 # 4. ENGINE CORE
 def generate_auto_signal():
-    # 1. Si toos ah u xulo lacag ka mid ah liiska kor ku xusan
     if st.session_state.platform == "Quotex":
         chosen_pair = random.choice(QUOTEX_PAIRS)
     else:
         chosen_pair = random.choice(POCKET_PAIRS)
         
-    # 2. Jihada suuqa (LONG ama SHORT)
     direction_choice = random.choice(["LONG ⬆️", "SHORT ⬇️"])
     color = "#00ff88" if "LONG" in direction_choice else "#ff4b4b"
     direction_text = "LONG" if "LONG" in direction_choice else "SHORT"
     
-    # 3. Boqolleyda guusha dhabta ah (Probability)
     probability = random.randint(84, 89)
     
     return chosen_pair, direction_text, color, probability
@@ -83,16 +93,16 @@ def generate_auto_signal():
 # 5. AUTOMATED GENERATOR BUTTON
 if st.button("⚡ NEW ANALYSIS (🚀 GET SIGNAL)"):
     with st.spinner('Analyzing Global Neural Nodes for Best Asset...'):
-        time.sleep(2.5) # Waqti dayasho ah oo uu nidaamku ku baari karo suuqyada
+        time.sleep(2.5) 
         
         pair, direction, card_color, prob = generate_auto_signal()
         
         st.markdown(f"""
             <div class="signal-card">
-                <p style="color: #888; font-size: 13px; letter-spacing:1px;">ANALYSIS COMPLETE</p>
+                <p style="color: #888; font-size: 13px; letter-spacing:1px; margin-bottom: 15px;">ANALYSIS COMPLETE</p>
                 
                 <p style="color: #64748b; margin-bottom: 2px; font-size:14px;">Currency Pair</p>
-                <h2 style="color: #ffffff; background: #16212e; padding: 10px; border-radius: 10px; display: inline-block; min-width: 200px; border: 1px solid #2c3e50; margin-top:0;">{pair}</h2>
+                <h2 style="color: #ffffff; background: #16212e; padding: 10px; border-radius: 10px; display: inline-block; min-width: 250px; border: 1px solid #2c3e50; margin-top:0;">{pair}</h2>
                 
                 <p style="color: #64748b; margin-bottom: 2px; margin-top:15px; font-size:14px;">Exp Time</p>
                 <h3 style="color: #ffffff; margin-top:0; font-weight:bold;">3 Minutes</h3>
