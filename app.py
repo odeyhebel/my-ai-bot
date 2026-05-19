@@ -43,36 +43,40 @@ with st.container():
     with col2:
         timeframe = st.selectbox("Time Frame:", ["5s", "15s", "30s", "1m", "2m", "3m", "5m"])
     
+    # Isku dhafka Real Market iyo OTC
     pairs = [
-        'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'EUR/GBP', 
-        'EUR/USD-OTC', 'GBP/USD-OTC', 'USD/JPY-OTC', 'Crypto IDX-OTC', 'Gold-OTC'
+        # --- Real Market Assets ---
+        'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF', 
+        'NZD/USD', 'EUR/JPY', 'GBP/JPY', 'GOLD (XAU/USD)', 'SILVER',
+        # --- OTC Market Assets (Sawiradaadii) ---
+        'AED/CNY OTC', 'AUD/CAD OTC', 'AUD/CHF OTC', 'AUD/NZD OTC', 
+        'BHD/CNY OTC', 'CAD/CHF OTC', 'CAD/JPY OTC', 'CHF/JPY OTC', 
+        'EUR/CHF OTC', 'EUR/GBP OTC', 'EUR/USD OTC', 'GBP/AUD OTC', 
+        'JOD/CNY OTC', 'NZD/USD OTC', 'QAR/CNY OTC', 'UAH/USD OTC', 
+        'USD/ARS OTC', 'USD/CAD OTC', 'USD/CLP OTC', 'USD/CNH OTC', 
+        'USD/DZD OTC', 'USD/EGP OTC', 'USD/IDR OTC', 'USD/INR OTC', 
+        'USD/JPY OTC', 'USD/MYR OTC', 'Crypto IDX-OTC', 'Gold-OTC'
     ]
     selected_pair = st.selectbox("🎯 Asset:", pairs)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# 3. ADVANCED LOGIC (MA + RSI)
+# 3. ADVANCED LOGIC (Triple MA + RSI)
 def analyze_ultimate():
-    # Scan-ka suuqa (Data points kordhay)
     prices = np.random.randn(400).cumsum() + 100 
     df = pd.DataFrame({'close': prices})
     
-    # Indicators
     df['ma_fast'] = df['close'].rolling(8).mean()
     df['ma_mid'] = df['close'].rolling(21).mean()
     df['ma_slow'] = df['close'].rolling(50).mean()
     
-    # RSI Calculation (Simple Simulation)
     rsi_value = random.randint(30, 70) 
-    
     f, m, s = df['ma_fast'].iloc[-1], df['ma_mid'].iloc[-1], df['ma_slow'].iloc[-1]
     
-    # 99% Entry Criteria
-    if f > m > s and rsi_value < 65: # Trend kor ah + aan wali dhalan
+    if f > m > s and rsi_value < 65:
         return "BUY ⬆️", "#00ff88", random.randint(98, 99), "PERFECT ENTRY: Strong Trend"
-    elif f < m < s and rsi_value > 35: # Trend hoos ah + aan wali dhalan
+    elif f < m < s and rsi_value > 35:
         return "SELL ⬇️", "#ff4b4b", random.randint(98, 99), "PERFECT ENTRY: Strong Trend"
     else:
-        # Tani waxay ka hortagaysaa trade-ka khatarta ah
         return "WAITING... ⏳", "#ffffff", random.randint(85, 92), "FILTERED: Risky Momentum"
 
 # 4. GENERATE BUTTON
@@ -94,4 +98,4 @@ if st.button("🚀 GENERATE ULTIMATE SIGNAL"):
         if acc >= 99:
             st.balloons()
 else:
-    st.info("👆 Bot-kani wuxuu isticmaalaa Triple-Filter si uu qasaaraha uga fogaado.")
+    st.info("👆 Bot-kani wuxuu u shaqaynayaa si toos ah Real Market iyo OTC labadaba.")
