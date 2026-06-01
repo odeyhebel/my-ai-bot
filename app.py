@@ -15,16 +15,28 @@ class ProAnalystBot:
         if len(df) < 5:
             return {"Action": "HOLD", "Pattern": "Xog ku yar suuqa"}
 
-        # Xaqiijinta qiimayaasha shumaca ee ugu dambeeyey
-        c_open = float(df['Open'].values[-1])
-        c_close = float(df['Close'].values[-1])
-        c_high = float(df['High'].values[-1])
-        c_low = float(df['Low'].values[-1])
-        
-        p_open = float(df['Open'].values[-2])
-        p_close = float(df['Close'].values[-2])
-        p_high = float(df['High'].values[-2])
-        p_low = float(df['Low'].values[-2])
+        # Xaqiijinta iyo nadiifinta qiimayaasha (Kuxirida .item() si looga dhigo scalar dhab ah)
+        try:
+            c_open = float(df['Open'].iloc[-1].item()) if hasattr(df['Open'].iloc[-1], 'item') else float(df['Open'].iloc[-1])
+            c_close = float(df['Close'].iloc[-1].item()) if hasattr(df['Close'].iloc[-1], 'item') else float(df['Close'].iloc[-1])
+            c_high = float(df['High'].iloc[-1].item()) if hasattr(df['High'].iloc[-1], 'item') else float(df['High'].iloc[-1])
+            c_low = float(df['Low'].iloc[-1].item()) if hasattr(df['Low'].iloc[-1], 'item') else float(df['Low'].iloc[-1])
+            
+            p_open = float(df['Open'].iloc[-2].item()) if hasattr(df['Open'].iloc[-2], 'item') else float(df['Open'].iloc[-2])
+            p_close = float(df['Close'].iloc[-2].item()) if hasattr(df['Close'].iloc[-2], 'item') else float(df['Close'].iloc[-2])
+            p_high = float(df['High'].iloc[-2].item()) if hasattr(df['High'].iloc[-2], 'item') else float(df['High'].iloc[-2])
+            p_low = float(df['Low'].iloc[-2].item()) if hasattr(df['Low'].iloc[-2], 'item') else float(df['Low'].iloc[-2])
+        except:
+            # Habka labaad haddii iloc uu dhibo
+            c_open = float(df['Open'].values[-1])
+            c_close = float(df['Close'].values[-1])
+            c_high = float(df['High'].values[-1])
+            c_low = float(df['Low'].values[-1])
+            
+            p_open = float(df['Open'].values[-2])
+            p_close = float(df['Close'].values[-2])
+            p_high = float(df['High'].values[-2])
+            p_low = float(df['Low'].values[-2])
 
         c_body = abs(c_close - c_open)
         c_total_range = (c_high - c_low) if (c_high - c_low) > 0 else 0.0001
@@ -101,15 +113,21 @@ st.subheader("🚨 Ogeysiiska Fursadaha Live-ka ah")
 if st.button("Kici Live Scanner-ka 🔄"):
     with st.spinner("Bot-ku wuxuu soo jiidayaa xogta suuqa dhabta ah..."):
         try:
-            # Soo jiid xogta 5-tii shumac ee ugu dambeeyey
-            data = yf.download(tickers=ticker_symbol, period="1d", interval=timeframe)
+            # 1. Soo jiid xogta
+            data = yf.download(tickers=ticker_symbol, period="1d", interval=timeframe, group_by="ticker")
             
             if not data.empty:
-                # Xalka rasmiga ah ee Multi-index: Waxaan isticmaalaynaa `.values[-1]` si aan u helno nambarka dhabta ah
-                current_price = float(data['Close'].values[-1])
+                # 2. MIDNIMO CODES (Xal u helida Multi-Index iyo Arrays-ka)
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(-1)
+                
+                # Nadiifi xogta si ay u noqoto hal nambar oo nadiif ah (Scalar)
+                last_close_series = data['Close'].squeeze()
+                current_price = float(last_close_series.iloc[-1])
+                
                 st.metric(label=f"Qiimaha Live-ka ah ee {asset_choice}", value=f"{current_price:.5f}")
                 
-                # Falanqaynta rasmiga ah ee bot-ka Mahad AI
+                # 3. Falanqaynta bot-ka Mahad AI
                 bot = ProAnalystBot(symbol=asset_choice, timeframe=timeframe)
                 result = bot.analyze_patterns(data)
                 
