@@ -2,10 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import time
 
 # ----------------------------------------------------
-# 1. BOT ENGINE LOGIC
+# 1. BOT ENGINE CONFIGURATION (PRO ANALYST LOGIC)
 # ----------------------------------------------------
 class ProAnalystBot:
     def __init__(self, symbol, timeframe):
@@ -16,16 +15,16 @@ class ProAnalystBot:
         if len(df) < 5:
             return {"Action": "HOLD", "Pattern": "Xog ku yar suuqa"}
 
-        # Shumacyada ugu dambeeyey ee live-ka ah
-        c_open = df['Open'].iloc[-1]
-        c_close = df['Close'].iloc[-1]
-        c_high = df['High'].iloc[-1]
-        c_low = df['Low'].iloc[-1]
+        # Shumacyada ugu dambeeyey ee live-ka ah (Waxaan u baddelnay qaab nadiif ah)
+        c_open = float(df['Open'].iloc[-1])
+        c_close = float(df['Close'].iloc[-1])
+        c_high = float(df['High'].iloc[-1])
+        c_low = float(df['Low'].iloc[-1])
         
-        p_open = df['Open'].iloc[-2]
-        p_close = df['Close'].iloc[-2]
-        p_high = df['High'].iloc[-2]
-        p_low = df['Low'].iloc[-2]
+        p_open = float(df['Open'].iloc[-2])
+        p_close = float(df['Close'].iloc[-2])
+        p_high = float(df['High'].iloc[-2])
+        p_low = float(df['Low'].iloc[-2])
 
         c_body = abs(c_close - c_open)
         c_total_range = (c_high - c_low) if (c_high - c_low) > 0 else 0.0001
@@ -71,17 +70,17 @@ class ProAnalystBot:
         return signal
 
 # ----------------------------------------------------
-# 2. STREAMLIT INTERFACE
+# 2. STREAMLIT INTERFACE UI DESIGN
 # ----------------------------------------------------
 st.set_page_config(page_title="Mahad AI - Live Scanner", layout="centered")
 
 st.title("🤖 Mahad AI - Live Scanner Bot")
-st.write("Kani waa bot-ka oo hadda xogta live-ka ah si otomaatig ah u soo jiidaya.")
+st.write("Kani waa bot-ka oo hadda xogta live-ka ah si otomaatig ah u soo jiidaya adigoo isticmaalaya aqoontaadii.")
 st.markdown("---")
 
 st.subheader("⚙️ Dejinta Suuqa")
 
-# Khariidadda loogu talagalay yfinance symbols (Real Forex)
+# Khariidadda lacagaha dhabta ah (Real Forex Pairs)
 asset_map = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
@@ -90,31 +89,32 @@ asset_map = {
 }
 
 asset_choice = st.selectbox("Dooro Lacagta (Asset):", list(asset_map.keys()))
-# 1m iyo 2m ayaa ah kuwa ugu yar ee yfinance uu oggol yahay live-ka
 timeframe = st.selectbox("Dooro Waqtiga (Timeframe):", ["1m", "2m"])
 
 ticker_symbol = asset_map[asset_choice]
 
+# ----------------------------------------------------
+# 3. LIVE SIGNAL DISPLAY LOGIC
+# ----------------------------------------------------
 st.markdown("---")
 st.subheader("🚨 Ogeysiiska Fursadaha Live-ka ah")
 
-# Badanka lagu kiciyo scanner-ka live-ka ah
 if st.button("Kici Live Scanner-ka 🔄"):
     with st.spinner("Bot-ku wuxuu soo jiidayaa xogta suuqa dhabta ah..."):
         try:
-            # Soo jiid xogta 5-tii shumac ee u dambeeyey
+            # Soo jiid xogta 5-tii shumac ee ugu dambeeyey
             data = yf.download(tickers=ticker_symbol, period="1d", interval=timeframe)
             
             if not data.empty:
-                # Muuji qiimaha ugu dambeeyey ee live-ka ah ee suuqa
-                current_price = data['Close'].iloc[-1]
+                # Xallinta rasmiga ah ee cilladdii hortaabay Series.format
+                current_price = float(data['Close'].iloc[-1])
                 st.metric(label=f"Qiimaha Live-ka ah ee {asset_choice}", value=f"{current_price:.5f}")
                 
-                # Falanqaynta bot-ka
+                # Falanqaynta rasmiga ah ee bot-ka Mahad AI
                 bot = ProAnalystBot(symbol=asset_choice, timeframe=timeframe)
                 result = bot.analyze_patterns(data)
                 
-                # Bandhigga Natiijada
+                # Bandhigga Natiijada iyadoo midabaysan
                 if result["Action"] == "BUY":
                     st.success(f"🟢 **{result['Action']} SIGNAL FOUND!**")
                     st.info(f"**Pattern:** {result['Pattern']}")
@@ -126,6 +126,6 @@ if st.button("Kici Live Scanner-ka 🔄"):
                 else:
                     st.info(f"⚪ **HOLD:** {result['Pattern']}. Shumaca hadda socda ma dhalin wax qaab ah.")
             else:
-                st.error("Waqtigaan suuqu waa xiran yahay ama xogta waa la waayay.")
+                st.error("Xogta suuqa waa la waayay ama suuqii baa xiran.")
         except Exception as e:
             st.error(f"Cillad ayaa dhacday: {e}")
