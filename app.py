@@ -92,11 +92,34 @@ st.markdown("---")
 
 st.subheader("⚙️ Dejinta Suuqa")
 
+# Dhammaan pairs-kii aad soo sawirtay oo loo beddelay Tickers-ka rasmiga ah ee yfinance
 asset_map = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
     "USD/JPY": "JPY=X",
-    "AUD/USD": "AUDUSD=X"
+    "AUD/USD": "AUDUSD=X",
+    "AUD/CHF": "AUDCHF=X",
+    "AUD/JPY": "AUDJPY=X",
+    "AUD/NZD": "AUDNZD=X",
+    "CAD/CHF": "CADCHF=X",
+    "CAD/JPY": "CADJPY=X",
+    "CHF/JPY": "CHFJPY=X",
+    "EUR/AUD": "EURAUD=X",
+    "EUR/CAD": "EURCAD=X",
+    "EUR/CHF": "EURCHF=X",
+    "EUR/GBP": "EURGBP=X",
+    "EUR/JPY": "EURJPY=X",
+    "EUR/NZD": "EURNZD=X",
+    "GBP/AUD": "GBPAUD=X",
+    "GBP/CAD": "GBPCAD=X",
+    "GBP/CHF": "GBPCHF=X",
+    "GBP/NZD": "GBPNZD=X",
+    "NZD/CAD": "NZDCAD=X",
+    "NZD/CHF": "NZDCHF=X",
+    "NZD/JPY": "NZDJPY=X",
+    "NZD/USD": "NZDUSD=X",
+    "USD/CAD": "CAD=X",
+    "USD/CHF": "CHF=X"
 }
 
 asset_choice = st.selectbox("Dooro Lacagta (Asset):", list(asset_map.keys()))
