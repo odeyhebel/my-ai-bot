@@ -15,16 +15,16 @@ class ProAnalystBot:
         if len(df) < 5:
             return {"Action": "HOLD", "Pattern": "Xog ku yar suuqa"}
 
-        # Shumacyada ugu dambeeyey ee live-ka ah (Waxaan u baddelnay qaab nadiif ah)
-        c_open = float(df['Open'].iloc[-1])
-        c_close = float(df['Close'].iloc[-1])
-        c_high = float(df['High'].iloc[-1])
-        c_low = float(df['Low'].iloc[-1])
+        # Xaqiijinta qiimayaasha shumaca ee ugu dambeeyey
+        c_open = float(df['Open'].values[-1])
+        c_close = float(df['Close'].values[-1])
+        c_high = float(df['High'].values[-1])
+        c_low = float(df['Low'].values[-1])
         
-        p_open = float(df['Open'].iloc[-2])
-        p_close = float(df['Close'].iloc[-2])
-        p_high = float(df['High'].iloc[-2])
-        p_low = float(df['Low'].iloc[-2])
+        p_open = float(df['Open'].values[-2])
+        p_close = float(df['Close'].values[-2])
+        p_high = float(df['High'].values[-2])
+        p_low = float(df['Low'].values[-2])
 
         c_body = abs(c_close - c_open)
         c_total_range = (c_high - c_low) if (c_high - c_low) > 0 else 0.0001
@@ -80,7 +80,6 @@ st.markdown("---")
 
 st.subheader("⚙️ Dejinta Suuqa")
 
-# Khariidadda lacagaha dhabta ah (Real Forex Pairs)
 asset_map = {
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
@@ -106,15 +105,15 @@ if st.button("Kici Live Scanner-ka 🔄"):
             data = yf.download(tickers=ticker_symbol, period="1d", interval=timeframe)
             
             if not data.empty:
-                # Xallinta rasmiga ah ee cilladdii hortaabay Series.format
-                current_price = float(data['Close'].iloc[-1])
+                # Xalka rasmiga ah ee Multi-index: Waxaan isticmaalaynaa `.values[-1]` si aan u helno nambarka dhabta ah
+                current_price = float(data['Close'].values[-1])
                 st.metric(label=f"Qiimaha Live-ka ah ee {asset_choice}", value=f"{current_price:.5f}")
                 
                 # Falanqaynta rasmiga ah ee bot-ka Mahad AI
                 bot = ProAnalystBot(symbol=asset_choice, timeframe=timeframe)
                 result = bot.analyze_patterns(data)
                 
-                # Bandhigga Natiijada iyadoo midabaysan
+                # Bandhigga Natiijada
                 if result["Action"] == "BUY":
                     st.success(f"🟢 **{result['Action']} SIGNAL FOUND!**")
                     st.info(f"**Pattern:** {result['Pattern']}")
