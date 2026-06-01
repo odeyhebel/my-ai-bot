@@ -1,5 +1,2 @@
-streamlit
+yfinance
 pandas
-numpy
-streamlit-autorefresh
-websockets
