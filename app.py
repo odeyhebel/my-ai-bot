@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import yfinance as yf
+import time
 
 # ----------------------------------------------------
-# 1. BOT ENGINE CONFIGURATION (PRO ANALYST LOGIC)
+# 1. BOT ENGINE LOGIC
 # ----------------------------------------------------
 class ProAnalystBot:
     def __init__(self, symbol, timeframe):
@@ -11,24 +13,24 @@ class ProAnalystBot:
         self.timeframe = timeframe
 
     def analyze_patterns(self, df):
-        if len(df) < 2:
-            return {"Asset": self.symbol, "Timeframe": self.timeframe, "Action": "HOLD", "Pattern": "Xogta ku yar"}
+        if len(df) < 5:
+            return {"Action": "HOLD", "Pattern": "Xog ku yar suuqa"}
 
-        # Shumacyada hadda jooga
-        c_open = df['open'].iloc[-1]
-        c_close = df['close'].iloc[-1]
-        c_high = df['high'].iloc[-1]
-        c_low = df['low'].iloc[-1]
+        # Shumacyada ugu dambeeyey ee live-ka ah
+        c_open = df['Open'].iloc[-1]
+        c_close = df['Close'].iloc[-1]
+        c_high = df['High'].iloc[-1]
+        c_low = df['Low'].iloc[-1]
         
-        p_open = df['open'].iloc[-2]
-        p_close = df['close'].iloc[-2]
-        p_high = df['high'].iloc[-2]
-        p_low = df['low'].iloc[-2]
+        p_open = df['Open'].iloc[-2]
+        p_close = df['Close'].iloc[-2]
+        p_high = df['High'].iloc[-2]
+        p_low = df['Low'].iloc[-2]
 
         c_body = abs(c_close - c_open)
         c_total_range = (c_high - c_low) if (c_high - c_low) > 0 else 0.0001
 
-        # 1. Candlestick Patterns
+        # 1. Candlestick Psychology Algorithms
         is_doji = c_body <= (c_total_range * 0.1)
 
         c_upper_wick = c_high - max(c_open, c_close)
@@ -46,8 +48,7 @@ class ProAnalystBot:
         is_tweezer_bottom = (p_close < p_open) and (c_close > c_open) and abs(p_low - c_low) <= (c_low * 0.0001)
         is_tweezer_top = (p_close > p_open) and (c_close < c_open) and abs(p_high - c_high) <= (c_high * 0.0001)
 
-        # Output Object
-        signal = {"Asset": self.symbol, "Timeframe": self.timeframe, "Action": "HOLD", "Pattern": "Suuq caadi ah (No Pattern)"}
+        signal = {"Action": "HOLD", "Pattern": "Suuq caadi ah (No Pattern)"}
 
         if is_hammer or is_bullish_engulfing or is_piercing_line or is_tweezer_bottom:
             signal["Action"] = "BUY"
@@ -70,59 +71,61 @@ class ProAnalystBot:
         return signal
 
 # ----------------------------------------------------
-# 2. STREAMLIT INTERFACE UI DESIGN
+# 2. STREAMLIT INTERFACE
 # ----------------------------------------------------
-st.set_page_config(page_title="Mahad AI - Pro Scanner", layout="centered")
+st.set_page_config(page_title="Mahad AI - Live Scanner", layout="centered")
 
-st.title("🤖 Mahad AI - Pro Scanner Bot")
-st.write("Kani waa bot-ka falanqaynta tooska ah ee ku dhex baari lahaa suuqyada Real iyo OTC.")
+st.title("🤖 Mahad AI - Live Scanner Bot")
+st.write("Kani waa bot-ka oo hadda xogta live-ka ah si otomaatig ah u soo jiidaya.")
 st.markdown("---")
 
-# Qaybta Doorashada Suuqyada (Sidebar ama Main Page)
-st.subheader("⚙️ Dejinta Scanner-ka")
-asset_name = st.selectbox("Dooro Lacagta (Asset):", ["EUR/USD", "GBP/USD", "EUR/USD_OTC", "USD/JPY_OTC"])
-timeframe = st.selectbox("Dooro Waqtiga (Timeframe):", ["15s", "30s", "1m", "2m"])
+st.subheader("⚙️ Dejinta Suuqa")
 
-# --- SHUMACYAHA TIJAABADA AH (Waxaad badali kartaa si aad u tijaabiso) ---
-st.subheader("📊 Geli Qiimaha Shumaca Hadda (Tijaabo)")
-col1, col2, col3, col4 = st.columns(4)
-with col1: o_val = st.number_input("Open Price", value=1.1000, format="%.4f")
-with col2: h_val = st.number_input("High Price", value=1.1030, format="%.4f")
-with col3: l_val = st.number_input("Low Price", value=1.0980, format="%.4f")
-with col4: c_val = st.number_input("Close Price", value=1.1025, format="%.4f")
-
-# Xogta loo dirayo Bot-ka (Shumacii hore iyo Kan hadda)
-mock_data = {
-    'open':  [1.1020, o_val],
-    'high':  [1.1025, h_val],
-    'low':   [1.1000, l_val],
-    'close': [1.1005, c_val] # Shumaca hore waa Casraan, Kan hadda adigaa xakameynaya
+# Khariidadda loogu talagalay yfinance symbols (Real Forex)
+asset_map = {
+    "EUR/USD": "EURUSD=X",
+    "GBP/USD": "GBPUSD=X",
+    "USD/JPY": "JPY=X",
+    "AUD/USD": "AUDUSD=X"
 }
-df_market = pd.DataFrame(mock_data)
 
-# ----------------------------------------------------
-# 3. SIGNAL DISPLAY LOGIC
-# ----------------------------------------------------
+asset_choice = st.selectbox("Dooro Lacagta (Asset):", list(asset_map.keys()))
+# 1m iyo 2m ayaa ah kuwa ugu yar ee yfinance uu oggol yahay live-ka
+timeframe = st.selectbox("Dooro Waqtiga (Timeframe):", ["1m", "2m"])
+
+ticker_symbol = asset_map[asset_choice]
+
 st.markdown("---")
 st.subheader("🚨 Ogeysiiska Fursadaha Live-ka ah")
 
-if st.button("Run Scanner 🔍"):
-    bot = ProAnalystBot(symbol=asset_name, timeframe=timeframe)
-    result = bot.analyze_patterns(df_market)
-    
-    # Sida ay shaashadda ugu soo baxayso iyadoo midabaysan
-    if result["Action"] == "BUY":
-        st.success(f"🟢 **{result['Action']} SIGNAL FOUND!**")
-        st.metric(label="Asset & Timeframe", value=f"{result['Asset']} ({result['Timeframe']})")
-        st.info(f"**Pattern:** {result['Pattern']}")
-        
-    elif result["Action"] == "SELL":
-        st.error(f"🔴 **{result['Action']} SIGNAL FOUND!**")
-        st.metric(label="Asset & Timeframe", value=f"{result['Asset']} ({result['Timeframe']})")
-        st.info(f"**Pattern:** {result['Pattern']}")
-        
-    elif result["Action"] == "WAIT":
-        st.warning(f"🟡 **WAIT:** {result['Pattern']}")
-        
-    else:
-        st.info("⚪ **HOLD:** Suuqyada la baaray hadda lagama helin wax qaab ah. Sug shumaca xiga.")
+# Badanka lagu kiciyo scanner-ka live-ka ah
+if st.button("Kici Live Scanner-ka 🔄"):
+    with st.spinner("Bot-ku wuxuu soo jiidayaa xogta suuqa dhabta ah..."):
+        try:
+            # Soo jiid xogta 5-tii shumac ee u dambeeyey
+            data = yf.download(tickers=ticker_symbol, period="1d", interval=timeframe)
+            
+            if not data.empty:
+                # Muuji qiimaha ugu dambeeyey ee live-ka ah ee suuqa
+                current_price = data['Close'].iloc[-1]
+                st.metric(label=f"Qiimaha Live-ka ah ee {asset_choice}", value=f"{current_price:.5f}")
+                
+                # Falanqaynta bot-ka
+                bot = ProAnalystBot(symbol=asset_choice, timeframe=timeframe)
+                result = bot.analyze_patterns(data)
+                
+                # Bandhigga Natiijada
+                if result["Action"] == "BUY":
+                    st.success(f"🟢 **{result['Action']} SIGNAL FOUND!**")
+                    st.info(f"**Pattern:** {result['Pattern']}")
+                elif result["Action"] == "SELL":
+                    st.error(f"🔴 **{result['Action']} SIGNAL FOUND!**")
+                    st.info(f"**Pattern:** {result['Pattern']}")
+                elif result["Action"] == "WAIT":
+                    st.warning(f"🟡 **WAIT:** {result['Pattern']}")
+                else:
+                    st.info(f"⚪ **HOLD:** {result['Pattern']}. Shumaca hadda socda ma dhalin wax qaab ah.")
+            else:
+                st.error("Waqtigaan suuqu waa xiran yahay ama xogta waa la waayay.")
+        except Exception as e:
+            st.error(f"Cillad ayaa dhacday: {e}")
