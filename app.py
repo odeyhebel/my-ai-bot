@@ -4,15 +4,15 @@ import numpy as np
 import yfinance as yf
 
 # ----------------------------------------------------
-# 1. BOT ENGINE CONFIGURATION (RESAMPLING & FILTERS)
+# 1. INSTITUTIONAL BOT ENGINE (BOLLINGER + MACD)
 # ----------------------------------------------------
-class UltimateMultiTimeframeBot:
+class InstitutionalMomentumBot:
     def __init__(self, symbol, timeframe_choice):
         self.symbol = symbol
         self.timeframe_choice = timeframe_choice
 
     def resample_data(self, df, minutes):
-        """Xogta 1m ayuu u beddelayaa 4m ama 10m oo nadiif ah"""
+        """Xogta 1m ayuu u beddelayaa waqtiyada kale oo nadiif ah"""
         resample_str = f"{minutes}min"
         resampled = df.resample(resample_str).agg({
             'Open': 'first',
@@ -24,136 +24,97 @@ class UltimateMultiTimeframeBot:
         return resampled
 
     def calculate_indicators(self, df):
-        # 1. EMA 50 ee Jihada Suuqa (Trend Filter)
-        df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
+        # 1. Bollinger Bands (20, 2)
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['STD'] = df['Close'].rolling(window=20).std()
+        df['Upper_Band'] = df['MA20'] + (df['STD'] * 2)
+        df['Lower_Band'] = df['MA20'] - (df['STD'] * 2)
 
-        # 2. RSI 14 (Overbought/Oversold Filter)
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / (loss + 0.00001)
-        df['RSI_14'] = 100 - (100 / (1 + rs))
+        # 2. MACD (12, 26, 9)
+        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+        df['MACD'] = exp1 - exp2
+        df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
+        
         return df
 
-    def analyze_patterns(self, df):
+    def analyze_market(self, df):
         if self.timeframe_choice in ["4m", "10m"]:
             minutes = 4 if self.timeframe_choice == "4m" else 10
             df = self.resample_data(df, minutes)
             
         df = self.calculate_indicators(df)
 
-        if len(df) < 20:
-            return {"Action": "HOLD", "Pattern": "Xog ku yar suuqa timeframe-kan (Sug xoogaa)"}
+        if len(df) < 30:
+            return {"Action": "HOLD", "Pattern": "Xogtu ku yar tahay indicator-rada (Sug xoogaa)"}
 
         try:
-            c_open = float(df['Open'].iloc[-1].item()) if hasattr(df['Open'].iloc[-1], 'item') else float(df['Open'].iloc[-1])
             c_close = float(df['Close'].iloc[-1].item()) if hasattr(df['Close'].iloc[-1], 'item') else float(df['Close'].iloc[-1])
-            c_high = float(df['High'].iloc[-1].item()) if hasattr(df['High'].iloc[-1], 'item') else float(df['High'].iloc[-1])
-            c_low = float(df['Low'].iloc[-1].item()) if hasattr(df['Low'].iloc[-1], 'item') else float(df['Low'].iloc[-1])
+            c_upper = float(df['Upper_Band'].iloc[-1].item()) if hasattr(df['Upper_Band'].iloc[-1], 'item') else float(df['Upper_Band'].iloc[-1])
+            c_lower = float(df['Lower_Band'].iloc[-1].item()) if hasattr(df['Lower_Band'].iloc[-1], 'item') else float(df['Lower_Band'].iloc[-1])
             
-            p_open = float(df['Open'].iloc[-2].item()) if hasattr(df['Open'].iloc[-2], 'item') else float(df['Open'].iloc[-2])
-            p_close = float(df['Close'].iloc[-2].item()) if hasattr(df['Close'].iloc[-2], 'item') else float(df['Close'].iloc[-2])
+            c_macd = float(df['MACD'].iloc[-1].item()) if hasattr(df['MACD'].iloc[-1], 'item') else float(df['MACD'].iloc[-1])
+            c_signal = float(df['Signal_Line'].iloc[-1].item()) if hasattr(df['Signal_Line'].iloc[-1], 'item') else float(df['Signal_Line'].iloc[-1])
             
-            current_ema = float(df['EMA_50'].iloc[-1].item()) if hasattr(df['EMA_50'].iloc[-1], 'item') else float(df['EMA_50'].iloc[-1])
-            current_rsi = float(df['RSI_14'].iloc[-1].item()) if hasattr(df['RSI_14'].iloc[-1], 'item') else float(df['RSI_14'].iloc[-1])
+            p_macd = float(df['MACD'].iloc[-2].item()) if hasattr(df['MACD'].iloc[-2], 'item') else float(df['MACD'].iloc[-2])
+            p_signal = float(df['Signal_Line'].iloc[-2].item()) if hasattr(df['Signal_Line'].iloc[-2], 'item') else float(df['Signal_Line'].iloc[-2])
         except:
-            c_open = float(df['Open'].values[-1])
             c_close = float(df['Close'].values[-1])
-            c_high = float(df['High'].values[-1])
-            c_low = float(df['Low'].values[-1])
-            
-            p_open = float(df['Open'].values[-2])
-            p_close = float(df['Close'].values[-2])
-            
-            current_ema = float(df['EMA_50'].values[-1])
-            current_rsi = float(df['RSI_14'].values[-1])
+            c_upper = float(df['Upper_Band'].values[-1])
+            c_lower = float(df['Lower_Band'].values[-1])
+            c_macd = float(df['MACD'].values[-1])
+            c_signal = float(df['Signal_Line'].values[-1])
+            p_macd = float(df['MACD'].values[-2])
+            p_signal = float(df['Signal_Line'].values[-2])
 
-        c_body = abs(c_close - c_open)
-        c_total_range = (c_high - c_low) if (c_high - c_low) > 0 else 0.0001
+        # Shuruudaha Xoogga Suuqa (Momentum Rules)
+        macd_bullish_cross = (c_macd > c_signal) and (p_macd <= p_signal)
+        macd_bearish_cross = (c_macd < c_signal) and (p_macd >= p_signal)
+        macd_is_bullish = c_macd > c_signal
+        macd_is_bearish = c_macd < c_signal
 
-        # Trend and Candlestick Logic
-        is_uptrend = c_close > current_ema
-        is_downtrend = c_close < current_ema
+        signal = {"Action": "HOLD", "Pattern": "Suuq meel dhexe taagan (No Institutional Volatility)"}
 
-        c_upper_wick = c_high - max(c_open, c_close)
-        c_lower_wick = min(c_open, c_close) - c_low
-        
-        is_hammer = (c_lower_wick >= c_body * 2) and (c_upper_wick <= c_body * 0.5)
-        is_shooting_star = (c_upper_wick >= c_body * 2) and (c_lower_wick <= c_body * 0.5)
-        is_bullish_engulfing = (p_close < p_open) and (c_close > c_open) and (c_close >= p_open) and (c_open <= p_close)
-        is_bearish_engulfing = (p_close > p_open) and (c_close < c_open) and (c_close <= p_open) and (c_open >= p_close)
-
-        signal = {"Action": "HOLD", "Pattern": f"Suuq caadi ah (No Trend Setup on {self.timeframe_choice})"}
-
-        # ---- BUY STRATEGY ----
-        if (is_hammer or is_bullish_engulfing):
-            if is_uptrend:
-                if current_rsi < 68:
-                    signal["Action"] = "BUY"
-                    signal["Pattern"] = f"{'Hammer' if is_hammer else 'Bullish Engulfing'} + Uptrend Confirmed + RSI: {current_rsi:.1f}"
-                else:
-                    signal["Action"] = "WAIT"
-                    signal["Pattern"] = f"Bullish Pattern dhashay laakiin suuqu waa koreeyaa (RSI Overbought: {current_rsi:.1f})"
+        # ---- STRATEGY: STRONGBULL BREAKOUT (BUY) ----
+        if c_close >= c_upper or (c_close > (c_upper * 0.999) and macd_bullish_cross):
+            if macd_is_bullish:
+                signal["Action"] = "BUY"
+                signal["Pattern"] = f"Institutional Volatility Breakout! Qiimuhu wuxuu jabiyey Upper Bollinger Band + MACD Bullish Jihaysan."
             else:
                 signal["Action"] = "WAIT"
-                signal["Pattern"] = "Pattern-ku waa BUY laakiin Jihada guud waa SELL (Below EMA50)."
+                signal["Pattern"] = "Qiimuhu waa sareeyaa laakiin awoodda MACD ma taageersana (Divergence Risk)."
 
-        # ---- SELL STRATEGY ----
-        elif (is_shooting_star or is_bearish_engulfing):
-            if is_downtrend:
-                if current_rsi > 32:
-                    signal["Action"] = "SELL"
-                    signal["Pattern"] = f"{'Shooting Star' if is_shooting_star else 'Bearish Engulfing'} + Downtrend Confirmed + RSI: {current_rsi:.1f}"
-                else:
-                    signal["Action"] = "WAIT"
-                    signal["Pattern"] = f"Bearish Pattern dhashay laakiin suuqu waa hooseeyaa (RSI Oversold: {current_rsi:.1f})"
+        # ---- STRATEGY: STRONGBEAR BREAKOUT (SELL) ----
+        elif c_close <= c_lower or (c_close < (c_lower * 1.001) and macd_bearish_cross):
+            if macd_is_bearish:
+                signal["Action"] = "SELL"
+                signal["Pattern"] = f"Institutional Volatility Breakdown! Qiimuhu wuxuu hoos u dhaafay Lower Bollinger Band + MACD Bearish Jihaysan."
             else:
                 signal["Action"] = "WAIT"
-                signal["Pattern"] = "Pattern-ku waa SELL laakiin Jihada guud waa BUY (Above EMA50)."
+                signal["Pattern"] = "Qiimuhu waa hooseeyaa laakiin awoodda MACD ma taageersana (Fakeout Risk)."
+                
+        # ---- SQUEEZE DETECTION (NO TRADE ZONE) ----
+        elif abs(c_upper - c_lower) < (c_close * 0.001):
+            signal["Action"] = "WAIT"
+            signal["Pattern"] = "Suuqu aad ayuu u dhuubtay (Bollinger Squeeze). Bangiyadu trade ma galayaan hadda."
 
         return signal
 
 # ----------------------------------------------------
-# 2. STREAMLIT INTERFACE UI DESIGN (ALL FOREX PAIRS)
+# 2. STREAMLIT INTERFACE UI DESIGN
 # ----------------------------------------------------
-st.set_page_config(page_title="Mahad AI - Ultimate V3", layout="centered")
+st.set_page_config(page_title="Mahad AI - Institutional", layout="centered")
 
-st.title("🤖 Mahad AI - MULTI-TIMEFRAME V3")
-st.write("Kani waa nooca dhammaystiran oo xalay la ballaariyey dhammaan Pairs-ka Forex ee rasmiga ah.")
+st.title("🤖 Mahad AI - INSTITUTIONAL EDITION (V4)")
+st.write("Kani waa bot ku shaqeeya algorithms-ka maamula awoodda iyo dhaqdhaqaaqa waaweyn ee suuqa.")
 st.markdown("---")
 
 st.subheader("⚙️ Dejinta Suuqa")
 
-# Dhammaan lacagaha oo dhammaystiran (38 Pairs)
 asset_map = {
-    # Euro Crosses
-    "EUR/USD": "EURUSD=X", "EUR/GBP": "EURGBP=X", "EUR/JPY": "EURJPY=X", 
-    "EUR/CHF": "EURCHF=X", "EUR/CAD": "EURCAD=X", "EUR/AUD": "EURAUD=X", 
-    "EUR/NZD": "EURNZD=X",
-    
-    # Great Britain Pound Crosses
-    "GBP/USD": "GBPUSD=X", "GBP/JPY": "GBPJPY=X", "GBP/CHF": "GBPCHF=X", 
-    "GBP/CAD": "GBPCAD=X", "GBP/AUD": "GBPAUD=X", "GBP/NZD": "GBPNZD=X",
-    
-    # US Dollar Majors & Minors
-    "USD/JPY": "JPY=X", "USD/CHF": "CHF=X", "USD/CAD": "CAD=X", 
-    "USD/SGD": "USDSGD=X", "USD/HKD": "USDHKD=X", "USD/TRY": "USDTRY=X", 
-    "USD/ZAR": "USDZAR=X", "USD/MXN": "USDMXN=X",
-    
-    # Australian Dollar Crosses
-    "AUD/USD": "AUDUSD=X", "AUD/JPY": "AUDJPY=X", "AUD/CHF": "AUDCHF=X", 
-    "AUD/CAD": "AUDCAD=X", "AUD/NZD": "AUDNZD=X",
-    
-    # New Zealand Dollar Crosses
-    "NZD/USD": "NZDUSD=X", "NZD/JPY": "NZDJPY=X", "NZD/CHF": "NZDCHF=X", 
-    "NZD/CAD": "NZDCAD=X",
-    
-    # Canadian Dollar & Swiss Franc Crosses
-    "CAD/JPY": "CADJPY=X", "CAD/CHF": "CADCHF=X", "CHF/JPY": "CHFJPY=X",
-    
-    # Exotic/Other Pairs (Kuwa mararka qaar Pocket Option bixiyo)
-    "SGD/JPY": "SGDJPY=X", "GBP/SGD": "GBPSGD=X", "EUR/SGD": "EURSGD=X",
-    "AUD/SGD": "AUDSGD=X", "EUR/HKD": "EURHKD=X"
+    "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "JPY=X", 
+    "EUR/JPY": "EURJPY=X", "GBP/JPY": "GBPJPY=X", "AUD/USD": "AUDUSD=X", 
+    "USD/CAD": "CAD=X", "USD/CHF": "CHF=X", "AUD/JPY": "AUDJPY=X"
 }
 
 asset_choice = st.selectbox("Dooro Lacagta (Asset):", sorted(list(asset_map.keys())))
@@ -164,11 +125,10 @@ ticker_symbol = asset_map[asset_choice]
 st.markdown("---")
 st.subheader("🚨 Ogeysiiska Fursadaha Tooska Ah")
 
-if st.button("Kici Live Scanner-ka 🔄"):
-    with st.spinner(f"Bot-ku wuxuu isu diyaarinayaa falanqaynta {tf_choice}..."):
+if st.button("Kici Institutional Scanner-ka 🔄"):
+    with st.spinner(f"Bot-ku wuxuu xisaabinayaa Bollinger Bands & MACD ee {tf_choice}..."):
         try:
             download_tf = "1m" if tf_choice in ["4m", "10m"] else tf_choice
-            
             data = yf.download(tickers=ticker_symbol, period="5d", interval=download_tf, group_by="ticker")
             
             if not data.empty:
@@ -180,20 +140,20 @@ if st.button("Kici Live Scanner-ka 🔄"):
                 
                 st.metric(label=f"Qiimaha Live-ka ah ee {asset_choice}", value=f"{current_price:.5f}")
                 
-                bot = UltimateMultiTimeframeBot(symbol=asset_choice, timeframe_choice=tf_choice)
-                result = bot.analyze_patterns(data)
+                bot = InstitutionalMomentumBot(symbol=asset_choice, timeframe_choice=tf_choice)
+                result = bot.analyze_market(data)
                 
                 if result["Action"] == "BUY":
-                    st.success(f"🟢 **{result['Action']} SIGNAL FOUND! ({tf_choice} High Probability)**")
-                    st.info(f"**Sababta:** {result['Pattern']}")
+                    st.success(f"🟢 **{result['Action']} SIGNAL FOUND! (Institutional Quality)**")
+                    st.info(f"**Xogta Farsamada:** {result['Pattern']}")
                 elif result["Action"] == "SELL":
-                    st.error(f"🔴 **{result['Action']} SIGNAL FOUND! ({tf_choice} High Probability)**")
-                    st.info(f"**Sababta:** {result['Pattern']}")
+                    st.error(f"🔴 **{result['Action']} SIGNAL FOUND! (Institutional Quality)**")
+                    st.info(f"**Xogta Farsamada:** {result['Pattern']}")
                 elif result["Action"] == "WAIT":
-                    st.warning(f"🟡 **BAAJI / WAIT:** {result['Pattern']}")
+                    st.warning(f"🟡 **HOLD / WAIT:** {result['Pattern']}")
                 else:
                     st.info(f"⚪ **HOLD:** {result['Pattern']}")
             else:
-                st.error("Xogta suuqa waa la waayay. Hubi in suuqu furanyahay.")
+                st.error("Xogta suuqa waa la waayay.")
         except Exception as e:
             st.error(f"Cillad ayaa dhacday: {e}")
