@@ -5,18 +5,20 @@ import pandas_ta as ta
 import requests
 import json
 
-# 1. Habaynta Streamlit UI
-st.set_page_config(page_title="Mahad AI - Live Signal Bot", page_icon="⚡", layout="dark")
-st.title("⚡ PROV MAHAD ULTIMATE AI")
-st.write("Live Market Scanner (Dhammaan Lacagaha Pocket Option)")
+# 1. Habaynta Streamlit UI (Halkan baa ciladu ku jirtay, hadda waa sax)
+st.set_page_config(
+    page_title="Mahad AI - Live Signal Bot", 
+    page_icon="⚡", 
+    layout="wide"  # "wide" ama "centered" kaliya ayaa sax ah
+)
 
-# Liiska rasmiga ah ee lacagaha laga soo xigtay sawiradaada
+st.title("⚡ PROV MAHAD ULTIMATE AI")
+st.write("Live Market Scanner via Yahoo Finance & AI Analysis")
+
+# Dhammaan lacagihii aad rabtay
 POCKET_OPTION_PAIRS = [
-    # Lacagaha Rasmiga ah (Real/Live Pairs)
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", 
     "USD/CAD", "USD/CHF", "EUR/CHF", "AUD/CHF", "CAD/JPY", "CAD/CHF",
-    
-    # Lacagaha OTC (Over-The-Counter)
     "AED/CNY OTC", "AUD/CHF OTC", "CAD/JPY OTC", "CHF/JPY OTC", "CHF/NOK OTC",
     "EUR/HUF OTC", "EUR/JPY OTC", "NGN/USD OTC", "QAR/CNY OTC", "UAH/USD OTC",
     "USD/BDT OTC", "USD/BRL OTC", "USD/CAD OTC", "USD/CLP OTC", "USD/CNH OTC",
@@ -27,19 +29,16 @@ POCKET_OPTION_PAIRS = [
     "USD/THB OTC", "TND/USD OTC", "USD/MXN OTC"
 ]
 
-# Doorashada Pair-ka iyo Timeframe-ka ee shaashadda ka muuqanaya
 selected_pair = st.selectbox("Dooro Pair-ka aad rabto:", POCKET_OPTION_PAIRS)
-timeframe = st.selectbox("Timeframe:", ["1m", "2m", "3m", "5m", "15m", "1h"])
 
-# Geli API Key-gaaga Anthropic (Claude) rasmiga ah
+# Yahoo Finance waxay u baahan tahay qaab ka duwan 2m ama 3m (1m, 5m ayaa ugu haboon)
+timeframe = st.selectbox("Timeframe:", ["1m", "5m", "15m", "1h"])
+
+# Geli API Key-gaaga Anthropic rasmiga ah
 API_KEY = "HALKAN_GELI_API_KEY_GAAGA"
 
-# Habka loo beddelayo magacyada Pocket Option si Yahoo Finance u fahamto
 def get_yahoo_ticker(pair_name):
-    # Ka saar qoraalka " OTC" haddii uu ku jiro
     clean_pair = pair_name.replace(" OTC", "")
-    
-    # Qaababka gaarka ah ee Yahoo Finance u baahan tahay
     mapping = {
         "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X", "EUR/JPY": "EURJPY=X",
         "AUD/JPY": "AUDJPY=X", "USD/JPY": "JPY=X", "EUR/CAD": "EURCAD=X",
@@ -48,29 +47,25 @@ def get_yahoo_ticker(pair_name):
         "USD/INR": "USDINR=X", "USD/SGD": "USDSGD=X", "USD/BRL": "USDBRL=X",
         "USD/PKR": "USDPKR=X", "USD/THB": "USDTHB=X", "USD/MXN": "USDMXN=X"
     }
-    
     if clean_pair in mapping:
         return mapping[clean_pair]
-    
-    # Sharciga guud ee lammaanaha kale (Tusaale: AED/CNY -> AEDCNY=X)
     parts = clean_pair.split("/")
     if len(parts) == 2:
         return f"{parts[0]}{parts[1]}=X"
-    return "EURUSD=X" # Haddii la waayo, si caadi ah EUR/USD ha u qaado
+    return "EURUSD=X"
 
 yahoo_ticker = get_yahoo_ticker(selected_pair)
 
 if st.button("GET LIVE SIGNAL"):
     with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
         try:
-            # Ka soo jiid xogta Yahoo Finance
             ticker = yf.Ticker(yahoo_ticker)
             df = ticker.history(period="1d", interval=timeframe)
             
             if df.empty:
                 st.error(f"Xogta lacagta {selected_pair} hadda lagama helid karo Yahoo Finance. Hubi in suuqu furanyahay ama isku day pair kale.")
             else:
-                # Xisaabi Tilmaamayaasha Farsamada (Indicators)
+                # Xisaabi Tilmaamayaasha Farsamada (Hadda pandas_ta waa shaqaynaysaa)
                 df['RSI'] = ta.rsi(df['Close'], length=14)
                 df['EMA_9'] = ta.ema(df['Close'], length=9)
                 df['EMA_21'] = ta.ema(df['Close'], length=21)
@@ -81,10 +76,10 @@ if st.button("GET LIVE SIGNAL"):
                 last_ema9 = df['EMA_9'].iloc[-1]
                 last_ema21 = df['EMA_21'].iloc[-1]
                 
-                # Diyaarinta Prompt-ka AI-ga
+                # Prompt-ka AI-ga
                 prompt = f"""
                 You are an expert binary options trading bot. Analyze the following LIVE market data:
-                Asset: {selected_pair} (Mapped to Yahoo: {yahoo_ticker})
+                Asset: {selected_pair}
                 Current Price: {current_price:.5f}
                 RSI (14): {last_rsi:.2f}
                 EMA 9: {last_ema9:.5f}
@@ -93,13 +88,13 @@ if st.button("GET LIVE SIGNAL"):
                 Scoring Rules:
                 - Give CALL if RSI < 40 and EMA_9 > EMA_21
                 - Give PUT if RSI > 60 and EMA_9 < EMA_21
-                - Give WAIT if signals are mixed or no strong momentum.
+                - Give WAIT if signals are mixed.
                 
-                Respond ONLY with JSON format, no markdown, no regular text:
-                {{"signal": "CALL/PUT/WAIT", "confidence": 0-100, "reason": "Short reason in Somali explaining why"}}
+                Respond ONLY with JSON format, no markdown:
+                {{"signal": "CALL/PUT/WAIT", "confidence": 0-100, "reason": "Short reason in Somali"}}
                 """
                 
-                # U dir API-ga Claude (Anthropic)
+                # U dir API-ga Claude
                 headers = {
                     "x-api-key": API_KEY,
                     "anthropic-version": "2023-06-01",
@@ -117,11 +112,9 @@ if st.button("GET LIVE SIGNAL"):
                     ai_response = response.json()['content'][0]['text']
                     result = json.loads(ai_response)
                     
-                    # Soo bandhig Natiijada UI-ga ku dhex jirta
                     st.success("Signal-kii waa diyaar!")
                     st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
                     
-                    # Midabka Signal-ka dadka u muuqda
                     if result['signal'] == "CALL":
                         st.subheader(f"🟩 SIGNAL: {result['signal']}")
                     elif result['signal'] == "PUT":
