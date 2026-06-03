@@ -5,17 +5,16 @@ import pandas_ta as ta
 import requests
 import json
 
-# 1. Habaynta Streamlit UI (Halkan baa ciladu ku jirtay, hadda waa sax)
+# 1. Habaynta Streamlit UI
 st.set_page_config(
     page_title="Mahad AI - Live Signal Bot", 
     page_icon="⚡", 
-    layout="wide"  # "wide" ama "centered" kaliya ayaa sax ah
+    layout="wide"
 )
 
 st.title("⚡ PROV MAHAD ULTIMATE AI")
 st.write("Live Market Scanner via Yahoo Finance & AI Analysis")
 
-# Dhammaan lacagihii aad rabtay
 POCKET_OPTION_PAIRS = [
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", 
     "USD/CAD", "USD/CHF", "EUR/CHF", "AUD/CHF", "CAD/JPY", "CAD/CHF",
@@ -30,8 +29,6 @@ POCKET_OPTION_PAIRS = [
 ]
 
 selected_pair = st.selectbox("Dooro Pair-ka aad rabto:", POCKET_OPTION_PAIRS)
-
-# Yahoo Finance waxay u baahan tahay qaab ka duwan 2m ama 3m (1m, 5m ayaa ugu haboon)
 timeframe = st.selectbox("Timeframe:", ["1m", "5m", "15m", "1h"])
 
 # Geli API Key-gaaga Anthropic rasmiga ah
@@ -54,29 +51,33 @@ def get_yahoo_ticker(pair_name):
         return f"{parts[0]}{parts[1]}=X"
     return "EURUSD=X"
 
+# Habka Cache-ka loogu daray si looga badbaado "Too Many Requests" Error
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_market_data(ticker_name, tf):
+    ticker = yf.Ticker(ticker_name)
+    return ticker.history(period="1d", interval=tf)
+
 yahoo_ticker = get_yahoo_ticker(selected_pair)
 
 if st.button("GET LIVE SIGNAL"):
     with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
         try:
-            ticker = yf.Ticker(yahoo_ticker)
-            df = ticker.history(period="1d", interval=timeframe)
+            # Wuxuu xogta ka soo jiidayaa cache-ka haddii 30 ilbiriqsi gudahood lagu celiyo
+            df = fetch_market_data(yahoo_ticker, timeframe)
             
             if df.empty:
-                st.error(f"Xogta lacagta {selected_pair} hadda lagama helid karo Yahoo Finance. Hubi in suuqu furanyahay ama isku day pair kale.")
+                st.error(f"Xogta lacagta {selected_pair} hadda dib ayay u dhacday ama suuqa ayaa xiran. Isku day Pair kale.")
             else:
-                # Xisaabi Tilmaamayaasha Farsamada (Hadda pandas_ta waa shaqaynaysaa)
+                # Xisaabi Indicators-ka
                 df['RSI'] = ta.rsi(df['Close'], length=14)
                 df['EMA_9'] = ta.ema(df['Close'], length=9)
                 df['EMA_21'] = ta.ema(df['Close'], length=21)
                 
-                # Qaado xogta ugu dambeysay
                 current_price = df['Close'].iloc[-1]
                 last_rsi = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 50
                 last_ema9 = df['EMA_9'].iloc[-1]
                 last_ema21 = df['EMA_21'].iloc[-1]
                 
-                # Prompt-ka AI-ga
                 prompt = f"""
                 You are an expert binary options trading bot. Analyze the following LIVE market data:
                 Asset: {selected_pair}
@@ -85,16 +86,15 @@ if st.button("GET LIVE SIGNAL"):
                 EMA 9: {last_ema9:.5f}
                 EMA 21: {last_ema21:.5f}
                 
-                Scoring Rules:
+                Rules:
                 - Give CALL if RSI < 40 and EMA_9 > EMA_21
                 - Give PUT if RSI > 60 and EMA_9 < EMA_21
-                - Give WAIT if signals are mixed.
+                - Otherwise give WAIT
                 
                 Respond ONLY with JSON format, no markdown:
                 {{"signal": "CALL/PUT/WAIT", "confidence": 0-100, "reason": "Short reason in Somali"}}
                 """
                 
-                # U dir API-ga Claude
                 headers = {
                     "x-api-key": API_KEY,
                     "anthropic-version": "2023-06-01",
@@ -123,9 +123,14 @@ if st.button("GET LIVE SIGNAL"):
                         st.subheader(f"🟨 SIGNAL: {result['signal']}")
                         
                     st.write(f"**Kalsooni:** {result['confidence']}%")
-                    st.write(f"**Sababta AI-ga:** {result['reason']}")
+                    st.write(f"**Sababta:** {result['reason']}")
                 else:
                     st.error(f"AI Server Error: {response.status_code}. Hubi furahaaga API Key rasmiga ah.")
                     
         except Exception as e:
-            st.error(f"Cilad koodhka dhexdiisa ah: {str(e)}")
+            # Haddii rate limit uu weli jiro, fariin nadiif ah ha u tuso isticmaalaha
+            if "Too Many Requests" in str(e) or "429" in str(e):
+                st.error("Yahoo Finance ayaa mashquul ah hadda (Rate Limited). Fadlan sug 1 ilaa 2 daqiiqo ka dibna mar kale riix badanka.")
+            else:
+                st.error(f"Cilad koodhka dhexdiisa ah: {str(e)}")
+                    
