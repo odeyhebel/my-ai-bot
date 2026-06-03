@@ -2,18 +2,16 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
-import requests
-import json
 
 # 1. Habaynta Streamlit UI
 st.set_page_config(
-    page_title="Mahad AI - Live Signal Bot", 
+    page_title="Mahad AI - Free Live Bot", 
     page_icon="⚡", 
     layout="wide"
 )
 
-st.title("⚡ PROV MAHAD ULTIMATE AI")
-st.write("Live Market Scanner via Yahoo Finance & AI Analysis (Taageeraya 2m & 3m)")
+st.title("⚡ PROV MAHAD FREE AI BOT")
+st.write("Live Market Scanner (No API Key Required - 100% Free)")
 
 POCKET_OPTION_PAIRS = [
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", 
@@ -29,12 +27,7 @@ POCKET_OPTION_PAIRS = [
 ]
 
 selected_pair = st.selectbox("Dooro Pair-ka aad rabto:", POCKET_OPTION_PAIRS)
-
-# Diyaar waxaa kuu ah 1m, 2m, 3m, iyo 5m!
 timeframe = st.selectbox("Timeframe:", ["1m", "2m", "3m", "5m"])
-
-# ⚠️ MUHIIM: HALKAN DHEX GELI FURahaaga ANTHROPIC EE RASMIGA AH
-API_KEY = "sk-ant-at03-XOGTA_FURAHAGA_HALKAN_GELI"
 
 def get_yahoo_ticker(pair_name):
     clean_pair = pair_name.replace(" OTC", "")
@@ -62,7 +55,6 @@ def fetch_market_data(ticker_name, tf):
     if df.empty:
         return df
         
-    # Isku dhex dhiib xogta si loo helo 2m iyo 3m
     if tf == "2m":
         df = df.resample('2min').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'})
     elif tf == "3m":
@@ -73,77 +65,57 @@ def fetch_market_data(ticker_name, tf):
 yahoo_ticker = get_yahoo_ticker(selected_pair)
 
 if st.button("GET LIVE SIGNAL"):
-    if API_KEY == "sk-ant-at03-XOGTA_FURAHAGA_HALKAN_GELI" or API_KEY == "":
-        st.warning("Fadlan koodhka dhexdiisa ku qor API Key-gaaga rasmiga ah ka hor inta aadan riixin badanka.")
-    else:
-        with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
-            try:
-                df = fetch_market_data(yahoo_ticker, timeframe)
+    with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
+        try:
+            df = fetch_market_data(yahoo_ticker, timeframe)
+            
+            if df.empty or len(df) < 21:
+                st.error(f"Xog ku filan laga ma helin {selected_pair} hadda. Isku day mar kale.")
+            else:
+                # Xisaabi Indicators-ka
+                df['RSI'] = ta.rsi(df['Close'], length=14)
+                df['EMA_9'] = ta.ema(df['Close'], length=9)
+                df['EMA_21'] = ta.ema(df['Close'], length=21)
                 
-                if df.empty or len(df) < 21:
-                    st.error(f"Xog ku filan laga ma helin {selected_pair} hadda. Isku day mar kale ama Pair kale.")
+                current_price = df['Close'].iloc[-1]
+                last_rsi = df['RSI'].iloc[-1]
+                last_ema9 = df['EMA_9'].iloc[-1]
+                last_ema21 = df['EMA_21'].iloc[-1]
+                
+                # --- XEERKA KALA DOORASHADA CODSIGA (FREE AUTO-ALGORITHM) ---
+                signal = "WAIT"
+                confidence = 50
+                reason = "Suuqu ma laha jiho cad hadda. Sug inta tilmaamayaashu isku raacayaan."
+                
+                if last_rsi < 40 and last_ema9 > last_ema21:
+                    signal = "CALL"
+                    confidence = 85
+                    reason = f"RSI ayaa muujisay in suuqu aad u hooseeyo ({last_rsi:.1f}), isla markaana EMA 9 ayaa kor u jartay EMA 21 oo muujisay kor u kac."
+                elif last_rsi > 60 and last_ema9 < last_ema21:
+                    signal = "PUT"
+                    confidence = 85
+                    reason = f"RSI ayaa muujisay in suuqu aad u sarreeyo ({last_rsi:.1f}), isla markaana EMA 9 ayaa hoos u jartay EMA 21 oo muujisay hoos u dhac."
+                
+                # Soo bandhig Natiijada
+                st.success(f"Falanqayntii {timeframe} waa diyaar!")
+                st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
+                
+                # Muujinta Signal-ka rasmiga ah
+                if signal == "CALL":
+                    st.subheader(f"🟩 SIGNAL: {signal}")
+                elif signal == "PUT":
+                    st.subheader(f"🟥 SIGNAL: {signal}")
                 else:
-                    df['RSI'] = ta.rsi(df['Close'], length=14)
-                    df['EMA_9'] = ta.ema(df['Close'], length=9)
-                    df['EMA_21'] = ta.ema(df['Close'], length=21)
+                    st.subheader(f"🟨 SIGNAL: {signal}")
                     
-                    current_price = df['Close'].iloc[-1]
-                    last_rsi = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 50
-                    last_ema9 = df['EMA_9'].iloc[-1]
-                    last_ema21 = df['EMA_21'].iloc[-1]
-                    
-                    prompt = f"""
-                    You are an expert binary options trading bot. Analyze the following LIVE market data:
-                    Asset: {selected_pair}
-                    Timeframe: {timeframe}
-                    Current Price: {current_price:.5f}
-                    RSI (14): {last_rsi:.2f}
-                    EMA 9: {last_ema9:.5f}
-                    EMA 21: {last_ema21:.5f}
-                    
-                    Rules:
-                    - Give CALL if RSI < 40 and EMA_9 > EMA_21
-                    - Give PUT if RSI > 60 and EMA_9 < EMA_21
-                    - Otherwise give WAIT
-                    
-                    Respond ONLY with JSON format, no markdown:
-                    {{"signal": "CALL/PUT/WAIT", "confidence": 0-100, "reason": "Short reason in Somali language"}}
-                    """
-                    
-                    headers = {
-                        "x-api-key": API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
-                    }
-                    data = {
-                        "model": "claude-3-5-sonnet-20241022",
-                        "max_tokens": 150,
-                        "messages": [{"role": "user", "content": prompt}]
-                    }
-                    
-                    response = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=data)
-                    
-                    if response.status_code == 200:
-                        ai_response = response.json()['content'][0]['text']
-                        result = json.loads(ai_response)
+                st.write(f"**Kalsooni:** {confidence}%")
+                st.write(f"**Sababta farsamo:** {reason}")
+                
+                # Tus qiimaha tilmaamayaasha si aad Pocket Option ugu dhex hubiso
+                st.info(f"Xogta lafagurka: RSI: {last_rsi:.2f} | EMA 9: {last_ema9:.5f} | EMA 21: {last_ema21:.5f}")
                         
-                        st.success(f"Signal-kii {timeframe} waa diyaar!")
-                        st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
-                        
-                        if result['signal'] == "CALL":
-                            st.subheader(f"🟩 SIGNAL: {result['signal']}")
-                        elif result['signal'] == "PUT":
-                            st.subheader(f"🟥 SIGNAL: {result['signal']}")
-                        else:
-                            st.subheader(f"🟨 SIGNAL: {result['signal']}")
-                            
-                        st.write(f"**Kalsooni:** {result['confidence']}%")
-                        st.write(f"**Sababta:** {result['reason']}")
-                    else:
-                        st.error(f"AI Server Error: {response.status_code}. Hubi in API Key-gu sax yahay ama uu leeyahay hanti (credits).")
-                        
-            except Exception as e:
-                if "Too Many Requests" in str(e) or "429" in str(e):
-                    st.error("Yahoo Finance ayaa mashquul ah. Fadlan sug 1 daqiiqo dibna u riix badanka.")
-                else:
-                    st.error(f"Cilad koodhka dhexdiisa ah: {str(e)}")
+        except Exception as e:
+            if "Too Many Requests" in str(e) or "429" in str(e):
+                st.error("Yahoo Finance ayaa xoogaa mashquushay. Fadlan sug 1 daqiiqo dibna u riix badanka.")
+            else:
+                st.error(f"Cilad: {str(e)}")
