@@ -70,49 +70,58 @@ def analyze_signal(df):
     low   = df['Low']
 
     # ── Indicators ──────────────────────────────
-    df['RSI']      = ta.rsi(close, length=14)
-    df['EMA_9']    = ta.ema(close, length=9)
-    df['EMA_21']   = ta.ema(close, length=21)
-    df['EMA_50']   = ta.ema(close, length=50)
+    df['RSI']    = ta.rsi(close, length=14)
+    df['EMA_9']  = ta.ema(close, length=9)
+    df['EMA_21'] = ta.ema(close, length=21)
+    df['EMA_50'] = ta.ema(close, length=50)
 
-    macd_df        = ta.macd(close, fast=12, slow=26, signal=9)
-    df['MACD']     = macd_df['MACD_12_26_9']
-    df['MACD_SIG'] = macd_df['MACDs_12_26_9']
-    df['MACD_HIST']= macd_df['MACDh_12_26_9']
+    # MACD
+    macd_df = ta.macd(close, fast=12, slow=26, signal=9)
+    macd_cols = macd_df.columns.tolist()
+    df['MACD']      = macd_df[macd_cols[0]]  # MACD line
+    df['MACD_SIG']  = macd_df[macd_cols[1]]  # Signal line
+    df['MACD_HIST'] = macd_df[macd_cols[2]]  # Histogram
 
-    bb             = ta.bbands(close, length=20, std=2)
-    df['BB_UP']    = bb['BBU_20_2.0']
-    df['BB_MID']   = bb['BBM_20_2.0']
-    df['BB_LOW']   = bb['BBL_20_2.0']
+    # Bollinger Bands - column name ku hel si toos ah
+    bb = ta.bbands(close, length=20, std=2)
+    bb_cols = bb.columns.tolist()
+    # Columns: Lower, Mid, Upper, Bandwidth, Percent
+    bb_lower_col = [c for c in bb_cols if c.startswith('BBL')][0]
+    bb_mid_col   = [c for c in bb_cols if c.startswith('BBM')][0]
+    bb_upper_col = [c for c in bb_cols if c.startswith('BBU')][0]
+    df['BB_LOW'] = bb[bb_lower_col]
+    df['BB_MID'] = bb[bb_mid_col]
+    df['BB_UP']  = bb[bb_upper_col]
 
-    stoch          = ta.stoch(high, low, close, k=14, d=3)
-    df['STOCH_K']  = stoch['STOCHk_14_3_3']
-    df['STOCH_D']  = stoch['STOCHd_14_3_3']
+    # Stochastic
+    stoch = ta.stoch(high, low, close, k=14, d=3)
+    stoch_cols = stoch.columns.tolist()
+    df['STOCH_K'] = stoch[stoch_cols[0]]
+    df['STOCH_D'] = stoch[stoch_cols[1]]
 
-    df['ATR']      = ta.atr(high, low, close, length=14)
+    df['ATR'] = ta.atr(high, low, close, length=14)
 
     # ── Qiimayaasha ugu dambeeyay ────────────────
-    r = df.iloc[-1]
-    r2= df.iloc[-2]   # candle ka hore
+    r  = df.iloc[-1]
+    r2 = df.iloc[-2]
 
-    rsi      = r['RSI']
-    ema9     = r['EMA_9']
-    ema21    = r['EMA_21']
-    ema50    = r['EMA_50']
-    macd     = r['MACD']
-    macd_sig = r['MACD_SIG']
-    macd_h   = r['MACD_HIST']
-    bb_up    = r['BB_UP']
-    bb_low   = r['BB_LOW']
-    bb_mid   = r['BB_MID']
-    stoch_k  = r['STOCH_K']
-    stoch_d  = r['STOCH_D']
+    rsi      = r['RSI']      if not pd.isna(r['RSI'])      else 50
+    ema9     = r['EMA_9']    if not pd.isna(r['EMA_9'])    else 0
+    ema21    = r['EMA_21']   if not pd.isna(r['EMA_21'])   else 0
+    ema50    = r['EMA_50']   if not pd.isna(r['EMA_50'])   else 0
+    macd     = r['MACD']     if not pd.isna(r['MACD'])     else 0
+    macd_sig = r['MACD_SIG'] if not pd.isna(r['MACD_SIG']) else 0
+    macd_h   = r['MACD_HIST']if not pd.isna(r['MACD_HIST'])else 0
+    bb_up    = r['BB_UP']    if not pd.isna(r['BB_UP'])    else 0
+    bb_low   = r['BB_LOW']   if not pd.isna(r['BB_LOW'])   else 0
+    bb_mid   = r['BB_MID']   if not pd.isna(r['BB_MID'])   else 0
+    stoch_k  = r['STOCH_K']  if not pd.isna(r['STOCH_K'])  else 50
+    stoch_d  = r['STOCH_D']  if not pd.isna(r['STOCH_D'])  else 50
     price    = r['Close']
-    atr      = r['ATR']
+    atr      = r['ATR']      if not pd.isna(r['ATR'])      else 0
+    prev_macd_h = r2['MACD_HIST'] if not pd.isna(r2['MACD_HIST']) else 0
 
-    prev_macd_h = r2['MACD_HIST']
-
-    # ── Xisaabinta dhibcaha CALL ────────────────
+    # ── Xisaabinta dhibcaha ────────────────────
     call_score = 0
     put_score  = 0
     call_reasons = []
@@ -121,13 +130,13 @@ def analyze_signal(df):
     # RSI
     if rsi < 30:
         call_score += 3
-        call_reasons.append(f"RSI aad u hooseeya ({rsi:.1f}) — oversold")
+        call_reasons.append(f"RSI aad u hooseeya ({rsi:.1f}) — oversold 🔥")
     elif rsi < 40:
         call_score += 2
         call_reasons.append(f"RSI hooseeya ({rsi:.1f})")
     elif rsi > 70:
         put_score += 3
-        put_reasons.append(f"RSI aad u sarreeya ({rsi:.1f}) — overbought")
+        put_reasons.append(f"RSI aad u sarreeya ({rsi:.1f}) — overbought 🔥")
     elif rsi > 60:
         put_score += 2
         put_reasons.append(f"RSI sarreeya ({rsi:.1f})")
@@ -150,12 +159,11 @@ def analyze_signal(df):
     # MACD
     if macd > macd_sig and macd_h > 0:
         call_score += 2
-        call_reasons.append("MACD positive crossover")
+        call_reasons.append("MACD positive crossover ✅")
     elif macd < macd_sig and macd_h < 0:
         put_score += 2
-        put_reasons.append("MACD negative crossover")
+        put_reasons.append("MACD negative crossover ✅")
 
-    # MACD Histogram taggay kor
     if macd_h > prev_macd_h and macd_h > 0:
         call_score += 1
         call_reasons.append("MACD histogram kor u socda")
@@ -164,45 +172,43 @@ def analyze_signal(df):
         put_reasons.append("MACD histogram hoos u socda")
 
     # Bollinger Bands
-    if price <= bb_low:
-        call_score += 3
-        call_reasons.append("Qiimahu BB hoostiisa — bounce la filayo")
-    elif price >= bb_up:
-        put_score += 3
-        put_reasons.append("Qiimahu BB korkooda — hoos u dhac la filayo")
-    elif price < bb_mid:
-        call_score += 1
-        call_reasons.append("Qiimahu BB dhexda hoostiisa")
-    else:
-        put_score += 1
-        put_reasons.append("Qiimahu BB dhexda korkooda")
+    if bb_up > 0 and bb_low > 0:
+        if price <= bb_low:
+            call_score += 3
+            call_reasons.append("Qiimahu BB hoostiisa — bounce la filayo 🔥")
+        elif price >= bb_up:
+            put_score += 3
+            put_reasons.append("Qiimahu BB korkooda — hoos u dhac la filayo 🔥")
+        elif price < bb_mid:
+            call_score += 1
+            call_reasons.append("Qiimahu BB dhexda hoostiisa")
+        else:
+            put_score += 1
+            put_reasons.append("Qiimahu BB dhexda korkooda")
 
     # Stochastic
     if stoch_k < 20 and stoch_d < 20:
         call_score += 3
-        call_reasons.append(f"Stochastic oversold ({stoch_k:.1f})")
+        call_reasons.append(f"Stochastic oversold ({stoch_k:.1f}) 🔥")
     elif stoch_k < 30:
         call_score += 1
         call_reasons.append(f"Stochastic hooseeya ({stoch_k:.1f})")
     elif stoch_k > 80 and stoch_d > 80:
         put_score += 3
-        put_reasons.append(f"Stochastic overbought ({stoch_k:.1f})")
+        put_reasons.append(f"Stochastic overbought ({stoch_k:.1f}) 🔥")
     elif stoch_k > 70:
         put_score += 1
         put_reasons.append(f"Stochastic sarreeya ({stoch_k:.1f})")
 
-    # Stoch K/D cross
     if stoch_k > stoch_d and stoch_k < 50:
         call_score += 1
-        call_reasons.append("Stoch K D ka sareeya (bullish cross)")
+        call_reasons.append("Stoch bullish cross")
     elif stoch_k < stoch_d and stoch_k > 50:
         put_score += 1
-        put_reasons.append("Stoch K D ka hooseeya (bearish cross)")
+        put_reasons.append("Stoch bearish cross")
 
-    # ── Go'aanka ────────────────────────────────
-    total = call_score + put_score
-    if total == 0:
-        total = 1
+    # ── Go'aanka ──────────────────────────────
+    total = call_score + put_score if (call_score + put_score) > 0 else 1
 
     if call_score > put_score and call_score >= 6:
         signal     = "CALL"
@@ -234,7 +240,6 @@ def analyze_signal(df):
             "BB_Lower": round(bb_low, 5),
             "Stoch_K": round(stoch_k, 2),
             "Stoch_D": round(stoch_d, 2),
-            "ATR": round(atr, 5),
             "Price": round(price, 5),
         }
     }
@@ -251,51 +256,53 @@ if st.button("⚡ GET LIVE SIGNAL", use_container_width=True):
                 st.error(f"Xog ku filan laga ma helin {selected_pair}. Isku day mar kale.")
             else:
                 result = analyze_signal(df)
-
-                st.success(f"✅ Signal diyaar — {selected_pair} ({timeframe})")
-
-                # ── Signal Display ──
                 sig = result['signal']
                 con = result['confidence']
 
+                st.success(f"✅ Signal diyaar — {selected_pair} ({timeframe})")
+
                 if sig == "CALL":
                     st.markdown(f"""
-                    <div style='background:#1a472a;padding:20px;border-radius:12px;text-align:center;border:2px solid #2ecc71;'>
+                    <div style='background:#1a472a;padding:20px;border-radius:12px;
+                                text-align:center;border:2px solid #2ecc71;'>
                         <h1 style='color:#2ecc71;font-size:3em;margin:0'>🟩 CALL ↑</h1>
                         <h2 style='color:white;margin:5px 0'>Kalsooni: {con}%</h2>
-                        <p style='color:#aaa;margin:0'>Dhibcaha: CALL {result['call_score']} vs PUT {result['put_score']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        <p style='color:#aaa;margin:0'>
+                            Dhibcaha: CALL {result['call_score']} vs PUT {result['put_score']}
+                        </p>
+                    </div>""", unsafe_allow_html=True)
                 elif sig == "PUT":
                     st.markdown(f"""
-                    <div style='background:#4a1122;padding:20px;border-radius:12px;text-align:center;border:2px solid #e74c3c;'>
+                    <div style='background:#4a1122;padding:20px;border-radius:12px;
+                                text-align:center;border:2px solid #e74c3c;'>
                         <h1 style='color:#e74c3c;font-size:3em;margin:0'>🟥 PUT ↓</h1>
                         <h2 style='color:white;margin:5px 0'>Kalsooni: {con}%</h2>
-                        <p style='color:#aaa;margin:0'>Dhibcaha: CALL {result['call_score']} vs PUT {result['put_score']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        <p style='color:#aaa;margin:0'>
+                            Dhibcaha: CALL {result['call_score']} vs PUT {result['put_score']}
+                        </p>
+                    </div>""", unsafe_allow_html=True)
                 else:
                     st.markdown(f"""
-                    <div style='background:#3d3200;padding:20px;border-radius:12px;text-align:center;border:2px solid #f39c12;'>
+                    <div style='background:#3d3200;padding:20px;border-radius:12px;
+                                text-align:center;border:2px solid #f39c12;'>
                         <h1 style='color:#f39c12;font-size:3em;margin:0'>🟨 WAIT</h1>
                         <h2 style='color:white;margin:5px 0'>Kalsooni: {con}%</h2>
-                        <p style='color:#aaa;margin:0'>Dhibcaha: CALL {result['call_score']} vs PUT {result['put_score']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        <p style='color:#aaa;margin:0'>
+                            Dhibcaha: CALL {result['call_score']} vs PUT {result['put_score']}
+                        </p>
+                    </div>""", unsafe_allow_html=True)
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # ── Sababaha ──
                 st.subheader("📋 Sababaha Signal-ka:")
-                for r in result['reasons']:
-                    st.write(f"• {r}")
+                for reason in result['reasons']:
+                    st.write(f"• {reason}")
 
-                # ── Indicators ──
                 with st.expander("📊 Dhammaan Indicators-ka"):
                     ind = result['indicators']
                     c1, c2, c3 = st.columns(3)
                     with c1:
-                        st.metric("RSI", ind['RSI'])
+                        st.metric("RSI",     ind['RSI'])
                         st.metric("Stoch K", ind['Stoch_K'])
                         st.metric("Stoch D", ind['Stoch_D'])
                     with c2:
@@ -303,9 +310,9 @@ if st.button("⚡ GET LIVE SIGNAL", use_container_width=True):
                         st.metric("EMA 21", ind['EMA_21'])
                         st.metric("EMA 50", ind['EMA_50'])
                     with c3:
-                        st.metric("MACD",        ind['MACD'])
-                        st.metric("BB Upper",    ind['BB_Upper'])
-                        st.metric("BB Lower",    ind['BB_Lower'])
+                        st.metric("MACD",     ind['MACD'])
+                        st.metric("BB Upper", ind['BB_Upper'])
+                        st.metric("BB Lower", ind['BB_Lower'])
 
         except Exception as e:
             st.error(f"Cilad: {str(e)}")
