@@ -1,101 +1,138 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import numpy as np
-import time
-import random
+import pandas_ta as ta
+import requests
+import json
 
-# 1. SETUP & UI 
-st.set_page_config(page_title="PROV MAHAD ULTIMATE AI", layout="centered")
+# 1. Habaynta Streamlit UI
+st.set_page_config(page_title="Mahad AI - Live Signal Bot", page_icon="⚡", layout="dark")
+st.title("⚡ PROV MAHAD ULTIMATE AI")
+st.write("Live Market Scanner (Dhammaan Lacagaha Pocket Option)")
 
-st.markdown("""
-    <style>
-    header[data-testid="stHeader"] { visibility: hidden !important; height: 0px; }
-    .stAppDeployButton { display: none !important; }
-    footer { visibility: hidden !important; }
-    .main { background-color: #050a0e; }
-    .signal-card { 
-        padding: 30px; border-radius: 25px; text-align: center; 
-        border: 2px solid #1e3a4c; background: #0b151e; margin-top: 20px;
+# Liiska rasmiga ah ee lacagaha laga soo xigtay sawiradaada
+POCKET_OPTION_PAIRS = [
+    # Lacagaha Rasmiga ah (Real/Live Pairs)
+    "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", 
+    "USD/CAD", "USD/CHF", "EUR/CHF", "AUD/CHF", "CAD/JPY", "CAD/CHF",
+    
+    # Lacagaha OTC (Over-The-Counter)
+    "AED/CNY OTC", "AUD/CHF OTC", "CAD/JPY OTC", "CHF/JPY OTC", "CHF/NOK OTC",
+    "EUR/HUF OTC", "EUR/JPY OTC", "NGN/USD OTC", "QAR/CNY OTC", "UAH/USD OTC",
+    "USD/BDT OTC", "USD/BRL OTC", "USD/CAD OTC", "USD/CLP OTC", "USD/CNH OTC",
+    "USD/PKR OTC", "USD/SGD OTC", "YER/USD OTC", "USD/INR OTC", "KES/USD OTC",
+    "USD/ARS OTC", "AUD/USD OTC", "USD/COP OTC", "EUR/USD OTC", "EUR/TRY OTC",
+    "USD/MYR OTC", "USD/VND OTC", "EUR/CHF OTC", "LBP/USD OTC", "MAD/USD OTC",
+    "EUR/RUB OTC", "OMR/CNY OTC", "SAR/CNY OTC", "USD/IDR OTC", "USD/JPY OTC",
+    "USD/THB OTC", "TND/USD OTC", "USD/MXN OTC"
+]
+
+# Doorashada Pair-ka iyo Timeframe-ka ee shaashadda ka muuqanaya
+selected_pair = st.selectbox("Dooro Pair-ka aad rabto:", POCKET_OPTION_PAIRS)
+timeframe = st.selectbox("Timeframe:", ["1m", "2m", "3m", "5m", "15m", "1h"])
+
+# Geli API Key-gaaga Anthropic (Claude) rasmiga ah
+API_KEY = "HALKAN_GELI_API_KEY_GAAGA"
+
+# Habka loo beddelayo magacyada Pocket Option si Yahoo Finance u fahamto
+def get_yahoo_ticker(pair_name):
+    # Ka saar qoraalka " OTC" haddii uu ku jiro
+    clean_pair = pair_name.replace(" OTC", "")
+    
+    # Qaababka gaarka ah ee Yahoo Finance u baahan tahay
+    mapping = {
+        "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X", "EUR/JPY": "EURJPY=X",
+        "AUD/JPY": "AUDJPY=X", "USD/JPY": "JPY=X", "EUR/CAD": "EURCAD=X",
+        "USD/CAD": "CAD=X", "USD/CHF": "CHF=X", "EUR/CHF": "EURCHF=X",
+        "AUD/CHF": "AUDCHF=X", "CAD/JPY": "CADJPY=X", "CAD/CHF": "CADCHF=X",
+        "USD/INR": "USDINR=X", "USD/SGD": "USDSGD=X", "USD/BRL": "USDBRL=X",
+        "USD/PKR": "USDPKR=X", "USD/THB": "USDTHB=X", "USD/MXN": "USDMXN=X"
     }
-    .settings-box { 
-        background: #16212e; padding: 15px; border-radius: 15px; 
-        border: 1px solid #2c3e50; margin-bottom: 10px; 
-    }
-    div.stButton > button {
-        width: 100%;
-        background-color: #1e3a4c;
-        color: white;
-        font-weight: bold;
-        border-radius: 10px;
-        height: 55px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("🤖 PROV MAHAD AI - ULTIMATE")
-
-# 2. SETTINGS
-with st.container():
-    st.markdown('<div class="settings-box">', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        market_type = st.selectbox("Market Type:", ["Real Market", "OTC Market"])
-    with col2:
-        timeframe = st.selectbox("Time Frame:", ["5s", "15s", "30s", "1m", "2m", "3m", "5m"])
     
-    # Isku dhafka Real Market iyo OTC
-    pairs = [
-        # --- Real Market Assets ---
-        'EUR/USD', 'GBP/USD', 'USD/JPY', 'AUD/USD', 'USD/CAD', 'USD/CHF', 
-        'NZD/USD', 'EUR/JPY', 'GBP/JPY', 'GOLD (XAU/USD)', 'SILVER',
-        # --- OTC Market Assets (Sawiradaadii) ---
-        'AED/CNY OTC', 'AUD/CAD OTC', 'AUD/CHF OTC', 'AUD/NZD OTC', 
-        'BHD/CNY OTC', 'CAD/CHF OTC', 'CAD/JPY OTC', 'CHF/JPY OTC', 
-        'EUR/CHF OTC', 'EUR/GBP OTC', 'EUR/USD OTC', 'GBP/AUD OTC', 
-        'JOD/CNY OTC', 'NZD/USD OTC', 'QAR/CNY OTC', 'UAH/USD OTC', 
-        'USD/ARS OTC', 'USD/CAD OTC', 'USD/CLP OTC', 'USD/CNH OTC', 
-        'USD/DZD OTC', 'USD/EGP OTC', 'USD/IDR OTC', 'USD/INR OTC', 
-        'USD/JPY OTC', 'USD/MYR OTC', 'Crypto IDX-OTC', 'Gold-OTC'
-    ]
-    selected_pair = st.selectbox("🎯 Asset:", pairs)
-    st.markdown('</div>', unsafe_allow_html=True)
+    if clean_pair in mapping:
+        return mapping[clean_pair]
+    
+    # Sharciga guud ee lammaanaha kale (Tusaale: AED/CNY -> AEDCNY=X)
+    parts = clean_pair.split("/")
+    if len(parts) == 2:
+        return f"{parts[0]}{parts[1]}=X"
+    return "EURUSD=X" # Haddii la waayo, si caadi ah EUR/USD ha u qaado
 
-# 3. ADVANCED LOGIC (Triple MA + RSI)
-def analyze_ultimate():
-    prices = np.random.randn(400).cumsum() + 100 
-    df = pd.DataFrame({'close': prices})
-    
-    df['ma_fast'] = df['close'].rolling(8).mean()
-    df['ma_mid'] = df['close'].rolling(21).mean()
-    df['ma_slow'] = df['close'].rolling(50).mean()
-    
-    rsi_value = random.randint(30, 70) 
-    f, m, s = df['ma_fast'].iloc[-1], df['ma_mid'].iloc[-1], df['ma_slow'].iloc[-1]
-    
-    if f > m > s and rsi_value < 65:
-        return "BUY ⬆️", "#00ff88", random.randint(98, 99), "PERFECT ENTRY: Strong Trend"
-    elif f < m < s and rsi_value > 35:
-        return "SELL ⬇️", "#ff4b4b", random.randint(98, 99), "PERFECT ENTRY: Strong Trend"
-    else:
-        return "WAITING... ⏳", "#ffffff", random.randint(85, 92), "FILTERED: Risky Momentum"
+yahoo_ticker = get_yahoo_ticker(selected_pair)
 
-# 4. GENERATE BUTTON
-if st.button("🚀 GENERATE ULTIMATE SIGNAL"):
-    with st.spinner('AI is performing Triple-Filter analysis...'):
-        time.sleep(1.5)
-        direction, color, acc, trend_desc = analyze_ultimate()
-        
-        st.markdown(f"""
-            <div class="signal-card">
-                <p style="color: #888;">{selected_pair} | {timeframe}</p>
-                <h3 style="color: {color};">{trend_desc}</h3>
-                <hr style="opacity: 0.1; margin: 15px 0;">
-                <h1 style="color: {color}; font-size: 80px; margin: 10px 0;">{direction}</h1>
-                <p style="color: #00ff88; font-size: 20px; font-weight: bold;">ACCURACY: {acc}%</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        if acc >= 99:
-            st.balloons()
-else:
-    st.info("👆 Bot-kani wuxuu u shaqaynayaa si toos ah Real Market iyo OTC labadaba.")
+if st.button("GET LIVE SIGNAL"):
+    with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
+        try:
+            # Ka soo jiid xogta Yahoo Finance
+            ticker = yf.Ticker(yahoo_ticker)
+            df = ticker.history(period="1d", interval=timeframe)
+            
+            if df.empty:
+                st.error(f"Xogta lacagta {selected_pair} hadda lagama helid karo Yahoo Finance. Hubi in suuqu furanyahay ama isku day pair kale.")
+            else:
+                # Xisaabi Tilmaamayaasha Farsamada (Indicators)
+                df['RSI'] = ta.rsi(df['Close'], length=14)
+                df['EMA_9'] = ta.ema(df['Close'], length=9)
+                df['EMA_21'] = ta.ema(df['Close'], length=21)
+                
+                # Qaado xogta ugu dambeysay
+                current_price = df['Close'].iloc[-1]
+                last_rsi = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 50
+                last_ema9 = df['EMA_9'].iloc[-1]
+                last_ema21 = df['EMA_21'].iloc[-1]
+                
+                # Diyaarinta Prompt-ka AI-ga
+                prompt = f"""
+                You are an expert binary options trading bot. Analyze the following LIVE market data:
+                Asset: {selected_pair} (Mapped to Yahoo: {yahoo_ticker})
+                Current Price: {current_price:.5f}
+                RSI (14): {last_rsi:.2f}
+                EMA 9: {last_ema9:.5f}
+                EMA 21: {last_ema21:.5f}
+                
+                Scoring Rules:
+                - Give CALL if RSI < 40 and EMA_9 > EMA_21
+                - Give PUT if RSI > 60 and EMA_9 < EMA_21
+                - Give WAIT if signals are mixed or no strong momentum.
+                
+                Respond ONLY with JSON format, no markdown, no regular text:
+                {{"signal": "CALL/PUT/WAIT", "confidence": 0-100, "reason": "Short reason in Somali explaining why"}}
+                """
+                
+                # U dir API-ga Claude (Anthropic)
+                headers = {
+                    "x-api-key": API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                }
+                data = {
+                    "model": "claude-3-5-sonnet-20241022",
+                    "max_tokens": 150,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                
+                response = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=data)
+                
+                if response.status_code == 200:
+                    ai_response = response.json()['content'][0]['text']
+                    result = json.loads(ai_response)
+                    
+                    # Soo bandhig Natiijada UI-ga ku dhex jirta
+                    st.success("Signal-kii waa diyaar!")
+                    st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
+                    
+                    # Midabka Signal-ka dadka u muuqda
+                    if result['signal'] == "CALL":
+                        st.subheader(f"🟩 SIGNAL: {result['signal']}")
+                    elif result['signal'] == "PUT":
+                        st.subheader(f"🟥 SIGNAL: {result['signal']}")
+                    else:
+                        st.subheader(f"🟨 SIGNAL: {result['signal']}")
+                        
+                    st.write(f"**Kalsooni:** {result['confidence']}%")
+                    st.write(f"**Sababta AI-ga:** {result['reason']}")
+                else:
+                    st.error(f"AI Server Error: {response.status_code}. Hubi furahaaga API Key rasmiga ah.")
+                    
+        except Exception as e:
+            st.error(f"Cilad koodhka dhexdiisa ah: {str(e)}")
