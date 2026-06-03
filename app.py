@@ -126,14 +126,12 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
                     if response.status_code == 200:
                         ai_response = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
                         
-                        # Nadiifi haddii AI-gu ku soo daro markdown aan la rabin
-                        if ai_response.startswith("```"):
-                            ai_response = ai_response.replace("
-```json", "").replace("```", "").strip()
+                        # Nadiifinta farriinta haddii uu ku jiro astaan markdown ah
+                        ai_response = ai_response.replace("```json", "").replace("```", "").strip()
                             
                         result = json.loads(ai_response)
 
-                        st.success(f"Signal-kii bilaashka ahaa ee Gemini waa diyaar!")
+                        st.success("Signal-kii bilaashka ahaa ee Gemini waa diyaar!")
                         st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
 
                         signal = result['signal']
@@ -153,4 +151,4 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
                         st.error(f"Google API Error: {response.status_code}. Hubi in API Key-gaagu sax yahay.")
 
             except Exception as e:
-                st.error(f"Cilad: {str(e)}")
+                st.error(f"Cilad farsamo: {str(e)}")
