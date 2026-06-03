@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
-import requests
+import google.generativeai as genai
 import json
 
 # Habaynta Streamlit UI
@@ -110,46 +110,37 @@ Rules:
 - Give PUT if RSI > 60 and EMA_9 < EMA_21
 - Otherwise give WAIT
 
-Respond ONLY with raw JSON format, no markdown blocks, no ```json 
-``` fences:
+Respond ONLY with raw JSON format, no markdown blocks, no ```json ``` fences:
 {{"signal": "CALL/PUT/WAIT", "confidence": 85, "reason": "Short analytical reason in Somali language"}}
 """
 
-                    # Halkan ayaan URL-ka ku saxay si uu u qaato habka saxda ah ee Google v1beta model terminal-kiisa
-                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-                    headers = {
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": API_KEY.strip()
-                    }
-                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                    # 🟩 QAABKA RAGMIGA AH EE GOOGLE SDK LIBRARY
+                    genai.configure(api_key=API_KEY.strip())
+                    model = genai.GenerativeModel("gemini-1.5-flash")
+                    
+                    response = model.generate_content(prompt)
+                    ai_response = response.text.strip()
+                    
+                    # Nadiifinta calaamadaha markdown-ka haddii ay jiraan
+                    ai_response = ai_response.replace("```json", "").replace("```", "").strip()
+                    result = json.loads(ai_response)
 
-                    response = requests.post(url, headers=headers, json=payload)
+                    st.success("Signal-kii bilaashka ahaa ee Gemini waa diyaar!")
+                    st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
 
-                    if response.status_code == 200:
-                        ai_response = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-                        
-                        # Nadiifinta calaamadaha markdown-ka
-                        ai_response = ai_response.replace("```json", "").replace("```", "").strip()
-                        result = json.loads(ai_response)
-
-                        st.success("Signal-kii bilaashka ahaa ee Gemini waa diyaar!")
-                        st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
-
-                        signal = result['signal']
-                        if signal == "CALL":
-                            st.subheader(f"🟩 SIGNAL: {signal}")
-                        elif signal == "PUT":
-                            st.subheader(f"🟥 SIGNAL: {signal}")
-                        else:
-                            st.subheader(f"🟨 SIGNAL: {signal}")
-
-                        st.write(f"**Kalsooni:** {result['confidence']}%")
-                        st.write(f"**Sababta:** {result['reason']}")
-
-                        with st.expander("📊 Xogta Indicators-ka"):
-                            st.write(f"RSI: {last_rsi:.2f} | EMA 9: {last_ema9:.5f} | EMA 21: {last_ema21:.5f}")
+                    signal = result['signal']
+                    if signal == "CALL":
+                        st.subheader(f"🟩 SIGNAL: {signal}")
+                    elif signal == "PUT":
+                        st.subheader(f"🟥 SIGNAL: {signal}")
                     else:
-                        st.error(f"Google API Error {response.status_code}: {response.text}")
+                        st.subheader(f"🟨 SIGNAL: {signal}")
+
+                    st.write(f"**Kalsooni:** {result['confidence']}%")
+                    st.write(f"**Sababta:** {result['reason']}")
+
+                    with st.expander("📊 Xogta Indicators-ka"):
+                        st.write(f"RSI: {last_rsi:.2f} | EMA 9: {last_ema9:.5f} | EMA 21: {last_ema21:.5f}")
 
             except Exception as e:
-                st.error(f"Cilad farsamo: {str(e)}")
+                st.error(f"Cilad: {str(e)}")
