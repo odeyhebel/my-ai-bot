@@ -2,16 +2,18 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
+import requests
+import json
 
 # 1. Habaynta Streamlit UI
 st.set_page_config(
-    page_title="Mahad AI - Free Live Bot", 
+    page_title="Mahad AI - Live Signal Bot", 
     page_icon="⚡", 
     layout="wide"
 )
 
-st.title("⚡ PROV MAHAD FREE AI BOT")
-st.write("Live Market Scanner (No API Key Required - 100% Free)")
+st.title("⚡ PROV MAHAD ULTIMATE AI")
+st.write("Live Market Scanner via Yahoo Finance & AI Analysis (Taageeraya 2m & 3m)")
 
 POCKET_OPTION_PAIRS = [
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", 
@@ -26,15 +28,44 @@ POCKET_OPTION_PAIRS = [
     "USD/THB OTC", "TND/USD OTC", "USD/MXN OTC"
 ]
 
-selected_pair = st.selectbox("Dooro Pair-ka aad rabto:", POCKET_OPTION_PAIRS)
-timeframe = st.selectbox("Timeframe:", ["1m", "2m", "3m", "5m"])
+# ─────────────────────────────────────────────
+# 🔑 API KEY INPUT - SIDEBAR
+# ─────────────────────────────────────────────
+st.sidebar.header("🔑 API Key Settings")
+st.sidebar.write("Anthropic API key-gaaga halkan ku geli (si badqab ah ayaa loo haynayaa):")
+
+API_KEY = st.sidebar.text_input(
+    label="Anthropic API Key",
+    value="",
+    type="password",          # ← password field, lama arko
+    placeholder="sk-ant-api03-...",
+    help="API key-gaaga waxaad ka heli kartaa: console.anthropic.com"
+)
+
+if API_KEY:
+    st.sidebar.success("✅ API Key waa la geliyay")
+else:
+    st.sidebar.warning("⚠️ API Key lama gelin. Fadlan geli si aad signal u hesho.")
+
+st.sidebar.markdown("---")
+st.sidebar.caption("API key-gaaga waxaa lagu kaydiyaa session-ka kaliya. Marna lama kaydiyo server-ka.")
+
+# ─────────────────────────────────────────────
+# MAIN CONTROLS
+# ─────────────────────────────────────────────
+col1, col2 = st.columns(2)
+with col1:
+    selected_pair = st.selectbox("Dooro Pair-ka aad rabto:", POCKET_OPTION_PAIRS)
+with col2:
+    timeframe = st.selectbox("Timeframe:", ["1m", "2m", "3m", "5m"])
+
 
 def get_yahoo_ticker(pair_name):
     clean_pair = pair_name.replace(" OTC", "")
     mapping = {
         "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X", "EUR/JPY": "EURJPY=X",
-        "AUD/JPY": "AUDJPY=X", "USD/JPY": "JPY=X", "EUR/CAD": "EURCAD=X",
-        "USD/CAD": "CAD=X", "USD/CHF": "CHF=X", "EUR/CHF": "EURCHF=X",
+        "AUD/JPY": "AUDJPY=X", "USD/JPY": "JPY=X",   "EUR/CAD": "EURCAD=X",
+        "USD/CAD": "CAD=X",    "USD/CHF": "CHF=X",    "EUR/CHF": "EURCHF=X",
         "AUD/CHF": "AUDCHF=X", "CAD/JPY": "CADJPY=X", "CAD/CHF": "CADCHF=X",
         "USD/INR": "USDINR=X", "USD/SGD": "USDSGD=X", "USD/BRL": "USDBRL=X",
         "USD/PKR": "USDPKR=X", "USD/THB": "USDTHB=X", "USD/MXN": "USDMXN=X"
@@ -46,76 +77,134 @@ def get_yahoo_ticker(pair_name):
         return f"{parts[0]}{parts[1]}=X"
     return "EURUSD=X"
 
+
 @st.cache_data(ttl=30, show_spinner=False)
 def fetch_market_data(ticker_name, tf):
     fetch_tf = "1m" if tf in ["2m", "3m"] else tf
     ticker = yf.Ticker(ticker_name)
     df = ticker.history(period="1d", interval=fetch_tf)
-    
+
     if df.empty:
         return df
-        
+
     if tf == "2m":
-        df = df.resample('2min').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'})
+        df = df.resample('2min').agg({
+            'Open': 'first', 'High': 'max',
+            'Low': 'min',   'Close': 'last', 'Volume': 'sum'
+        })
     elif tf == "3m":
-        df = df.resample('3min').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'})
-        
+        df = df.resample('3min').agg({
+            'Open': 'first', 'High': 'max',
+            'Low': 'min',   'Close': 'last', 'Volume': 'sum'
+        })
+
     return df.dropna()
+
 
 yahoo_ticker = get_yahoo_ticker(selected_pair)
 
-if st.button("GET LIVE SIGNAL"):
-    with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
-        try:
-            df = fetch_market_data(yahoo_ticker, timeframe)
-            
-            if df.empty or len(df) < 21:
-                st.error(f"Xog ku filan laga ma helin {selected_pair} hadda. Isku day mar kale.")
-            else:
-                # Xisaabi Indicators-ka
-                df['RSI'] = ta.rsi(df['Close'], length=14)
-                df['EMA_9'] = ta.ema(df['Close'], length=9)
-                df['EMA_21'] = ta.ema(df['Close'], length=21)
-                
-                current_price = df['Close'].iloc[-1]
-                last_rsi = df['RSI'].iloc[-1]
-                last_ema9 = df['EMA_9'].iloc[-1]
-                last_ema21 = df['EMA_21'].iloc[-1]
-                
-                # --- XEERKA KALA DOORASHADA CODSIGA (FREE AUTO-ALGORITHM) ---
-                signal = "WAIT"
-                confidence = 50
-                reason = "Suuqu ma laha jiho cad hadda. Sug inta tilmaamayaashu isku raacayaan."
-                
-                if last_rsi < 40 and last_ema9 > last_ema21:
-                    signal = "CALL"
-                    confidence = 85
-                    reason = f"RSI ayaa muujisay in suuqu aad u hooseeyo ({last_rsi:.1f}), isla markaana EMA 9 ayaa kor u jartay EMA 21 oo muujisay kor u kac."
-                elif last_rsi > 60 and last_ema9 < last_ema21:
-                    signal = "PUT"
-                    confidence = 85
-                    reason = f"RSI ayaa muujisay in suuqu aad u sarreeyo ({last_rsi:.1f}), isla markaana EMA 9 ayaa hoos u jartay EMA 21 oo muujisay hoos u dhac."
-                
-                # Soo bandhig Natiijada
-                st.success(f"Falanqayntii {timeframe} waa diyaar!")
-                st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
-                
-                # Muujinta Signal-ka rasmiga ah
-                if signal == "CALL":
-                    st.subheader(f"🟩 SIGNAL: {signal}")
-                elif signal == "PUT":
-                    st.subheader(f"🟥 SIGNAL: {signal}")
+# ─────────────────────────────────────────────
+# SIGNAL BUTTON
+# ─────────────────────────────────────────────
+if st.button("⚡ GET LIVE SIGNAL", use_container_width=True):
+
+    if not API_KEY or API_KEY.strip() == "":
+        st.error("❌ Fadlan API Key-gaaga sidebar-ka ku geli ka hor inta aadan signal raadin.")
+    else:
+        with st.spinner(f"La xiriiraya suuqa dhabta ah ee {selected_pair}..."):
+            try:
+                df = fetch_market_data(yahoo_ticker, timeframe)
+
+                if df.empty or len(df) < 21:
+                    st.error(
+                        f"Xog ku filan laga ma helin {selected_pair} hadda. "
+                        "Isku day mar kale ama Pair kale."
+                    )
                 else:
-                    st.subheader(f"🟨 SIGNAL: {signal}")
-                    
-                st.write(f"**Kalsooni:** {confidence}%")
-                st.write(f"**Sababta farsamo:** {reason}")
-                
-                # Tus qiimaha tilmaamayaasha si aad Pocket Option ugu dhex hubiso
-                st.info(f"Xogta lafagurka: RSI: {last_rsi:.2f} | EMA 9: {last_ema9:.5f} | EMA 21: {last_ema21:.5f}")
-                        
-        except Exception as e:
-            if "Too Many Requests" in str(e) or "429" in str(e):
-                st.error("Yahoo Finance ayaa xoogaa mashquushay. Fadlan sug 1 daqiiqo dibna u riix badanka.")
-            else:
-                st.error(f"Cilad: {str(e)}")
+                    # ── Indicators ──
+                    df['RSI']    = ta.rsi(df['Close'], length=14)
+                    df['EMA_9']  = ta.ema(df['Close'], length=9)
+                    df['EMA_21'] = ta.ema(df['Close'], length=21)
+
+                    current_price = df['Close'].iloc[-1]
+                    last_rsi  = df['RSI'].iloc[-1]  if not pd.isna(df['RSI'].iloc[-1])  else 50
+                    last_ema9 = df['EMA_9'].iloc[-1]
+                    last_ema21= df['EMA_21'].iloc[-1]
+
+                    prompt = f"""
+You are an expert binary options trading bot. Analyze the following LIVE market data:
+Asset: {selected_pair}
+Timeframe: {timeframe}
+Current Price: {current_price:.5f}
+RSI (14): {last_rsi:.2f}
+EMA 9: {last_ema9:.5f}
+EMA 21: {last_ema21:.5f}
+
+Rules:
+- Give CALL if RSI < 40 and EMA_9 > EMA_21
+- Give PUT  if RSI > 60 and EMA_9 < EMA_21
+- Otherwise give WAIT
+
+Respond ONLY with JSON format, no markdown:
+{{"signal": "CALL/PUT/WAIT", "confidence": 0-100, "reason": "Short reason in Somali language"}}
+"""
+
+                    headers = {
+                        "x-api-key": API_KEY.strip(),
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json"
+                    }
+                    payload = {
+                        "model": "claude-3-5-sonnet-20241022",
+                        "max_tokens": 150,
+                        "messages": [{"role": "user", "content": prompt}]
+                    }
+
+                    response = requests.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers=headers,
+                        json=payload
+                    )
+
+                    if response.status_code == 200:
+                        ai_response = response.json()['content'][0]['text']
+                        result = json.loads(ai_response)
+
+                        st.success(f"Signal-kii {timeframe} waa diyaar!")
+                        st.metric(
+                            label=f"Qiimaha Hadda ({selected_pair})",
+                            value=f"{current_price:.5f}"
+                        )
+
+                        signal = result['signal']
+                        if signal == "CALL":
+                            st.subheader(f"🟩 SIGNAL: {signal}")
+                        elif signal == "PUT":
+                            st.subheader(f"🟥 SIGNAL: {signal}")
+                        else:
+                            st.subheader(f"🟨 SIGNAL: {signal}")
+
+                        st.write(f"**Kalsooni:** {result['confidence']}%")
+                        st.write(f"**Sababta:** {result['reason']}")
+
+                        # ── Raw indicators ──
+                        with st.expander("📊 Xogta Faahfaahsan"):
+                            st.write(f"RSI: {last_rsi:.2f}")
+                            st.write(f"EMA 9:  {last_ema9:.5f}")
+                            st.write(f"EMA 21: {last_ema21:.5f}")
+
+                    elif response.status_code == 401:
+                        st.error("❌ API Key-gaagu ma shaqeyso (401 Unauthorized). Hubi in uu sax yahay.")
+                    elif response.status_code == 429:
+                        st.error("⏳ Aad baad u isticmaashay API-ga. Sug xoogaa markaa isku day.")
+                    else:
+                        st.error(
+                            f"AI Server Error: {response.status_code}. "
+                            "Hubi in API Key-gu sax yahay ama uu leeyahay hanti (credits)."
+                        )
+
+            except Exception as e:
+                if "Too Many Requests" in str(e) or "429" in str(e):
+                    st.error("Yahoo Finance ayaa mashquul ah. Fadlan sug 1 daqiiqo dibna u riix badanka.")
+                else:
+                    st.error(f"Cilad koodhka dhexdiisa ah: {str(e)}")
