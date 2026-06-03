@@ -5,7 +5,7 @@ import pandas_ta as ta
 import requests
 import json
 
-# 1. Habaynta Streamlit UI
+# Habaynta Streamlit UI
 st.set_page_config(
     page_title="Mahad AI - Gemini Free Bot", 
     page_icon="⚡", 
@@ -96,64 +96,6 @@ if st.button("⚡ GET LIVE SIGNAL", use_container_width=True):
                     last_ema9 = df['EMA_9'].iloc[-1]
                     last_ema21 = df['EMA_21'].iloc[-1]
 
-                    # Prompt ga Google loo dirayo
-                    prompt = f"""
-You are an expert binary options trading bot. Analyze this market data:
-Asset: {selected_pair}
-Timeframe: {timeframe}
-Current Price: {current_price:.5f}
-RSI (14): {last_rsi:.2f}
-EMA 9: {last_ema9:.5f}
-EMA 21: {last_ema21:.5f}
+                    # Prompt aad u kooban oo nidaamsan
+                    prompt = f"Analyze market: {selected_pair}, TF: {timeframe}, Price: {current_price:.5f}, RSI: {last_rsi:.2f}, EMA9: {last_ema9:.5f}, EMA21: {last_ema21:.5f}. Rules: CALL if RSI<40 and EMA9>EMA21; PUT if RSI>60 and EMA9<EMA21; "").replace("```", "").strip() "CALL": "Content-Type": "PUT": "application/json", "x-goog-api-key": # ### ({selected_pair})", **Commit **Refresh** **oo --- 1. 2. 200: 21: 3. 85, 9: API API_KEY.strip() Ciladii EMA Error Exception Gemini GitHub, Habka Hadda Indicators-ka"): JSON Koodhkan Ku Maxaa ONLY Respond SIGNAL: Somali\"}}" Streamlit, Tag WAIT. Xogta [{"parts": [{"text": \"CALL/PUT/WAIT\", \"Short \"confidence\": \"reason\": ``` `app.py` ahaa ahaanba ai_response="ai_response.replace("```json"," as bilaashka bogga changes**. cusub dhan** dheh, dhex dibna diyaar!") e: ee elif else else: except farsamo: format: furahaaga furaynin gabi geli. hadda hadda! headers="headers," if in json="payload)" ka khalkhalaya koobiyeeso. ku la laabo marnaba nadiifinta oo payload="{"contents":" prompt}]}]} rabaa? raw reason response="requests.post(url," response.status_code="=" result="json.loads(ai_response)" riix shub signal="=" st.error(f"Cilad st.error(f"Google st.expander("📊 st.metric(label="f"Qiimaha" st.subheader(f"🟥 st.subheader(f"🟨 st.subheader(f"🟩 st.success("Signal-kii st.write(f"**Kalsooni:** st.write(f"**Sababta:** st.write(f"RSI: this url="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent" value="f"{current_price:.5f}")" waa with xallismay {last_ema21:.5f}") {last_ema9:.5f} {last_rsi:.2f} {response.status_code}: {response.text}") {result['confidence']}%") {result['reason']}") {signal}") {str(e)}") {{\"signal\": | }>
 
-Rules:
-- Give CALL if RSI < 40 and EMA_9 > EMA_21
-- Give PUT if RSI > 60 and EMA_9 < EMA_21
-- Otherwise give WAIT
-
-Respond ONLY with raw JSON format, no markdown blocks, no ```json 
-``` fences:
-{{"signal": "CALL/PUT/WAIT", "confidence": 85, "reason": "Short analytical reason in Somali language"}}
-"""
-
-                    # Habka cusub ee qaata furayaasha AQ-ga ah (headers-ka ayaa lagu daray key-ga)
-                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-                    headers = {
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": API_KEY.strip()
-                    }
-                    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-                    response = requests.post(url, headers=headers, json=payload)
-
-                    if response.status_code == 200:
-                        ai_response = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-                        
-                        # Nadiifinta farriinta
-                        if ai_response.startswith("```"):
-                            ai_response = ai_response.replace("
-```json", "").replace("```", "").strip()
-                            
-                        result = json.loads(ai_response)
-
-                        st.success("Signal-kii bilaashka ahaa ee Gemini waa diyaar!")
-                        st.metric(label=f"Qiimaha Hadda ({selected_pair})", value=f"{current_price:.5f}")
-
-                        signal = result['signal']
-                        if signal == "CALL":
-                            st.subheader(f"🟩 SIGNAL: {signal}")
-                        elif signal == "PUT":
-                            st.subheader(f"🟥 SIGNAL: {signal}")
-                        else:
-                            st.subheader(f"🟨 SIGNAL: {signal}")
-
-                        st.write(f"**Kalsooni:** {result['confidence']}%")
-                        st.write(f"**Sababta:** {result['reason']}")
-
-                        with st.expander("📊 Xogta Indicators-ka"):
-                            st.write(f"RSI: {last_rsi:.2f} | EMA 9: {last_ema9:.5f} | EMA 21: {last_ema21:.5f}")
-                    else:
-                        st.error(f"Google API Error {response.status_code}: {response.text}")
-
-            except Exception as e:
-                st.error(f"Cilad farsamo: {str(e)}")
