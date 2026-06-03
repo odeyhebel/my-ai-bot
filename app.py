@@ -96,7 +96,6 @@ if st.button("⚡ GET LIVE SIGNAL", use_container_width=True):
                     last_ema9 = df['EMA_9'].iloc[-1]
                     last_ema21 = df['EMA_21'].iloc[-1]
 
-                    # Prompt sax ah oo qaab JSON ah ku qoran
                     prompt = f"""
 You are an expert binary options trading bot. Analyze this market data:
 Asset: {selected_pair}
@@ -116,7 +115,7 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
 {{"signal": "CALL/PUT/WAIT", "confidence": 85, "reason": "Short analytical reason in Somali language"}}
 """
 
-                    # Nidaamka rasmiga ah ee qaata furayaasha cusub (AQ.Ab8RN6...)
+                    # Halkan ayaan URL-ka ku saxay si uu u qaato habka saxda ah ee Google v1beta model terminal-kiisa
                     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
                     headers = {
                         "Content-Type": "application/json",
@@ -129,7 +128,7 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
                     if response.status_code == 200:
                         ai_response = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
                         
-                        # Nadiifi haddii uu wato calaamadaha markdown-ka
+                        # Nadiifinta calaamadaha markdown-ka
                         ai_response = ai_response.replace("```json", "").replace("```", "").strip()
                         result = json.loads(ai_response)
 
