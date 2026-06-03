@@ -29,8 +29,8 @@ API_KEY = st.sidebar.text_input(
     label="Google Gemini API Key",
     value="",
     type="password",          
-    placeholder="AIzaSy...",
-    help="Furahaaga bilaashka ah ka soo koobiyeeso: aistudio.google.com"
+    placeholder="AQ.Ab8RN6...",
+    help="Furahaaga ka soo koobiyeeso: aistudio.google.com"
 )
 
 if API_KEY:
@@ -116,9 +116,12 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
 {{"signal": "CALL/PUT/WAIT", "confidence": 85, "reason": "Short analytical reason in Somali language"}}
 """
 
-                    # Google Gemini API Link
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY.strip()}"
-                    headers = {"Content-Type": "application/json"}
+                    # Habka cusub ee qaata furayaasha AQ-ga ah (headers-ka ayaa lagu daray key-ga)
+                    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": API_KEY.strip()
+                    }
                     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
                     response = requests.post(url, headers=headers, json=payload)
@@ -126,8 +129,10 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
                     if response.status_code == 200:
                         ai_response = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
                         
-                        # Nadiifinta farriinta haddii uu ku jiro astaan markdown ah
-                        ai_response = ai_response.replace("```json", "").replace("```", "").strip()
+                        # Nadiifinta farriinta
+                        if ai_response.startswith("```"):
+                            ai_response = ai_response.replace("
+```json", "").replace("```", "").strip()
                             
                         result = json.loads(ai_response)
 
@@ -148,7 +153,7 @@ Respond ONLY with raw JSON format, no markdown blocks, no ```json
                         with st.expander("📊 Xogta Indicators-ka"):
                             st.write(f"RSI: {last_rsi:.2f} | EMA 9: {last_ema9:.5f} | EMA 21: {last_ema21:.5f}")
                     else:
-                        st.error(f"Google API Error: {response.status_code}. Hubi in API Key-gaagu sax yahay.")
+                        st.error(f"Google API Error {response.status_code}: {response.text}")
 
             except Exception as e:
                 st.error(f"Cilad farsamo: {str(e)}")
