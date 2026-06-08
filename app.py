@@ -281,11 +281,11 @@ def analyze_signal(df):
 
     total = (call_score + put_score) if (call_score + put_score) > 0 else 1
 
-    if call_score > put_score and call_score >= 8:
+    if call_score > put_score and call_score >= 6:
         signal     = "CALL"
         confidence = min(50 + int((call_score / total) * 45), 82)
         reasons    = call_reasons
-    elif put_score > call_score and put_score >= 8:
+    elif put_score > call_score and put_score >= 6:
         signal     = "PUT"
         confidence = min(50 + int((put_score / total) * 45), 82)
         reasons    = put_reasons
@@ -294,9 +294,9 @@ def analyze_signal(df):
         confidence = 0
         reasons    = ["Signal xooggan malahan — WAIT ✋"]
         if call_score > put_score:
-            reasons.append(f"CALL dhinac u jeedaa laakiin score ({call_score}) waa yar (8 baahan)")
+            reasons.append(f"CALL dhinac u jeedaa laakiin score ({call_score}) waa yar (6 baahan)")
         elif put_score > call_score:
-            reasons.append(f"PUT dhinac u jeedaa laakiin score ({put_score}) waa yar (8 baahan)")
+            reasons.append(f"PUT dhinac u jeedaa laakiin score ({put_score}) waa yar (6 baahan)")
 
     return {
         "signal": signal, "confidence": confidence,
@@ -374,7 +374,7 @@ if st.button("⚡ GET LIVE SIGNAL", use_container_width=True):
                         <h2 style='color:#aaa;margin:8px 0'>Signal xooggan malahan</h2>
                         <div style='background:#ffffff22;border-radius:8px;padding:8px;margin-top:10px;'>
                             <span style='color:#ffddaa;font-size:1.1em'>
-                                CALL {result['call_score']} vs PUT {result['put_score']} — 8+ baahan
+                                CALL {result["call_score"]} vs PUT {result["put_score"]} — 6+ baahan
                             </span>
                         </div>
                     </div>""", unsafe_allow_html=True)
