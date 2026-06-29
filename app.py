@@ -7,28 +7,25 @@ import time
 from datetime import datetime
 
 st.set_page_config(
-    page_title="Mahad AI - Auto Scanner v6",
+    page_title="Mahad AI - Auto Scanner v6.1",
     page_icon="⚡",
     layout="wide"
 )
 
-st.title("⚡ PROV MAHAD ULTIMATE AI v6")
-st.write("Real-Time Multi-Pair & Multi-Timeframe Auto Scanner (OTC + Real Market)")
+st.title("⚡ PROV MAHAD ULTIMATE AI v6.1 — ULTRA SCANNER")
+st.write("Real-Time Multi-Pair Scanner | Conflict Shield + High Accuracy Engine | OTC + Real Market")
 
 POCKET_OPTION_PAIRS = [
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", "USD/CAD",
-    "USD/CHF", "EUR/CHF", "AUD/CHF", "CAD/JPY", "CAD/CHF", "AED/CNY OTC",
-    "AUD/CHF OTC", "CAD/JPY OTC", "CHF/JPY OTC", "CHF/NOK OTC", "EUR/HUF OTC",
-    "EUR/JPY OTC", "NGN/USD OTC", "QAR/CNY OTC", "UAH/USD OTC", "USD/BDT OTC",
-    "USD/BRL OTC", "USD/CAD OTC", "USD/CLP OTC", "USD/CNH OTC", "USD/PKR OTC",
-    "USD/SGD OTC", "YER/USD OTC", "USD/INR OTC", "KES/USD OTC", "USD/ARS OTC",
-    "AUD/USD OTC", "USD/COP OTC", "EUR/USD OTC", "EUR/TRY OTC", "USD/MYR OTC",
-    "USD/VND OTC", "EUR/CHF OTC", "LBP/USD OTC", "MAD/USD OTC", "EUR/RUB OTC",
-    "OMR/CNY OTC", "SAR/CNY OTC", "USD/IDR OTC", "USD/JPY OTC", "USD/THB OTC",
-    "TND/USD OTC", "USD/MXN OTC"
+    "USD/CHF", "EUR/CHF", "AUD/CHF", "CAD/JPY", "CAD/CHF",
+    "AUD/CHF OTC", "CAD/JPY OTC", "CHF/JPY OTC", "EUR/JPY OTC",
+    "USD/BRL OTC", "USD/CAD OTC", "USD/CNH OTC", "USD/SGD OTC",
+    "USD/INR OTC", "USD/ARS OTC", "AUD/USD OTC", "USD/COP OTC",
+    "EUR/USD OTC", "EUR/TRY OTC", "USD/MYR OTC", "EUR/CHF OTC",
+    "USD/IDR OTC", "USD/JPY OTC", "USD/THB OTC", "USD/MXN OTC"
 ]
 
-TIMEFRAMES = ["1m", "2m", "3m", "5m"]
+TIMEFRAMES = ["3m", "2m", "1m", "5m"]
 
 def get_yahoo_ticker(pair_name):
     clean_pair = pair_name.replace(" OTC", "")
@@ -50,131 +47,264 @@ def get_yahoo_ticker(pair_name):
         return f"{parts[0]}{parts[1]}=X"
     return "EURUSD=X"
 
-def fetch_market_data_silent(ticker_name, tf):
+def fetch_data(ticker_name, tf):
     try:
         fetch_tf = "1m" if tf in ["2m", "3m"] else tf
-        ticker = yf.Ticker(ticker_name)
         period_len = "2d" if fetch_tf == "1m" else "5d"
-        df = ticker.history(period=period_len, interval=fetch_tf)
+        df = yf.Ticker(ticker_name).history(period=period_len, interval=fetch_tf)
         if df.empty or len(df) < 30:
             return pd.DataFrame()
         if tf == "2m":
             df = df.resample("2min").agg({
-                "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"
+                "Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"
             }).dropna()
         elif tf == "3m":
             df = df.resample("3min").agg({
-                "Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"
+                "Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"
             }).dropna()
         return df.dropna()
     except:
         return pd.DataFrame()
 
-def analyze_signal_silent(df):
-    close  = df["Close"]
-    high   = df["High"]
-    low    = df["Low"]
-    volume = df["Volume"]
+def analyze(df):
+    try:
+        close  = df["Close"]
+        high   = df["High"]
+        low    = df["Low"]
+        volume = df["Volume"]
 
-    df["RSI"]     = ta.rsi(close, length=14)
-    df["EMA_9"]   = ta.ema(close, length=9)
-    df["EMA_21"]  = ta.ema(close, length=21)
-    df["EMA_50"]  = ta.ema(close, length=50)
-    
-    adx_df   = ta.adx(high, low, close, length=14)
-    adx_cols = adx_df.columns.tolist()
-    df["ADX"]    = adx_df[[c for c in adx_cols if c.startswith("ADX_")][0]]
-    df["DI_POS"] = adx_df[[c for c in adx_cols if "DMP" in c][0]]
-    df["DI_NEG"] = adx_df[[c for c in adx_cols if "DMN" in c][0]]
+        df = df.copy()
+        df["RSI"]     = ta.rsi(close, length=14)
+        df["RSI_6"]   = ta.rsi(close, length=6)
+        df["EMA_9"]   = ta.ema(close, length=9)
+        df["EMA_21"]  = ta.ema(close, length=21)
+        df["EMA_50"]  = ta.ema(close, length=50)
+        df["EMA_200"] = ta.ema(close, length=200)
 
-    r = df.iloc[-1]
-    price  = r["Close"]
-    rsi    = r["RSI"] if not pd.isna(r["RSI"]) else 50
-    ema9   = r["EMA_9"] if not pd.isna(r["EMA_9"]) else price
-    ema21  = r["EMA_21"] if not pd.isna(r["EMA_21"]) else price
-    ema50  = r["EMA_50"] if not pd.isna(r["EMA_50"]) else price
-    adx    = r["ADX"] if not pd.isna(r["ADX"]) else 0
-    di_pos = r["DI_POS"] if not pd.isna(r["DI_POS"]) else 0
-    di_neg = r["DI_NEG"] if not pd.isna(r["DI_NEG"]) else 0
+        macd_df   = ta.macd(close, fast=12, slow=26, signal=9)
+        macd_cols = macd_df.columns.tolist()
+        df["MACD"]      = macd_df[[c for c in macd_cols if c.startswith("MACD_")][0]]
+        df["MACD_HIST"] = macd_df[[c for c in macd_cols if c.startswith("MACDh_")][0]]
+        df["MACD_SIG"]  = macd_df[[c for c in macd_cols if c.startswith("MACDs_")][0]]
 
-    trend_strong = adx > 22
-    trend_is_up  = trend_strong and di_pos > di_neg
-    trend_is_down= trend_strong and di_neg > di_pos
+        bb      = ta.bbands(close, length=20, std=2)
+        bb_cols = bb.columns.tolist()
+        df["BB_LOW"] = bb[[c for c in bb_cols if c.startswith("BBL")][0]]
+        df["BB_UP"]  = bb[[c for c in bb_cols if c.startswith("BBU")][0]]
 
-    call_score = 0
-    put_score  = 0
+        stoch      = ta.stoch(high, low, close, k=14, d=3)
+        stoch_cols = stoch.columns.tolist()
+        df["STOCH_K"] = stoch[stoch_cols[0]]
+        df["STOCH_D"] = stoch[stoch_cols[1]]
 
-    if rsi < 25:
-        if trend_is_down: put_score += 3
-        else: call_score += 4
-    elif rsi > 75:
-        if trend_is_up: call_score += 3
-        else: put_score += 4
+        adx_df   = ta.adx(high, low, close, length=14)
+        adx_cols = adx_df.columns.tolist()
+        df["ADX"]    = adx_df[[c for c in adx_cols if c.startswith("ADX_")][0]]
+        df["DI_POS"] = adx_df[[c for c in adx_cols if "DMP" in c][0]]
+        df["DI_NEG"] = adx_df[[c for c in adx_cols if "DMN" in c][0]]
+        df["VOL_MA"] = volume.rolling(20).mean()
 
-    if ema9 > ema21 > ema50: call_score += 4
-    if ema9 < ema21 < ema50: put_score += 4
+        def s(val, d=0):
+            return val if not pd.isna(val) else d
 
-    if trend_strong:
-        if di_pos > di_neg: call_score += 4
-        else: put_score += 4
+        r  = df.iloc[-1]
+        r2 = df.iloc[-2]
 
-    is_conflicted = abs(call_score - put_score) < 4
+        price    = r["Close"]
+        rsi      = s(r["RSI"],      50)
+        rsi6     = s(r["RSI_6"],    50)
+        ema9     = s(r["EMA_9"],    price)
+        ema21    = s(r["EMA_21"],   price)
+        ema50    = s(r["EMA_50"],   price)
+        ema200   = s(r["EMA_200"],  price)
+        macd     = s(r["MACD"],     0)
+        macd_sig = s(r["MACD_SIG"], 0)
+        macd_h   = s(r["MACD_HIST"],0)
+        macd_h2  = s(r2["MACD_HIST"],0)
+        bb_up    = s(r["BB_UP"],    price*1.01)
+        bb_low_v = s(r["BB_LOW"],   price*0.99)
+        stoch_k  = s(r["STOCH_K"],  50)
+        stoch_d  = s(r["STOCH_D"],  50)
+        adx      = s(r["ADX"],      0)
+        di_pos   = s(r["DI_POS"],   0)
+        di_neg   = s(r["DI_NEG"],   0)
+        vol      = s(r["Volume"],   0)
+        vol_ma   = s(r["VOL_MA"],   1)
 
-    if is_conflicted:
+        trend_strong = adx > 22
+        trend_is_up  = trend_strong and di_pos > di_neg
+        trend_is_down= trend_strong and di_neg > di_pos
+
+        cs = 0  # call score
+        ps = 0  # put score
+
+        # 1. RSI — Trend-Lock Logic
+        if rsi < 25:
+            if trend_is_down: ps += 3
+            else: cs += 4
+        elif rsi < 35 and not trend_is_down:
+            cs += 2
+        if rsi > 75:
+            if trend_is_up: cs += 3
+            else: ps += 4
+        elif rsi > 65 and not trend_is_up:
+            ps += 2
+
+        # Fast RSI
+        if rsi6 < 20 and not trend_is_down: cs += 1
+        elif rsi6 > 80 and not trend_is_up:  ps += 1
+
+        # 2. EMA Structure
+        if ema9 > ema21 > ema50:   cs += 4
+        if ema9 < ema21 < ema50:   ps += 4
+
+        if price > ema200: cs += 1
+        else:              ps += 1
+
+        # 3. MACD
+        if macd > macd_sig and macd_h > 0:
+            cs += 2
+            if macd_h > macd_h2: cs += 1
+        elif macd < macd_sig and macd_h < 0:
+            ps += 2
+            if macd_h < macd_h2: ps += 1
+
+        # 4. Bollinger Bands (FIXED: Middle Band Noise Removed)
+        if price <= bb_low_v:
+            if trend_is_down: ps += 2
+            else: cs += 3
+        elif price >= bb_up:
+            if trend_is_up: cs += 2
+            else: ps += 3
+
+        # 5. Stochastic
+        if stoch_k < 20 and stoch_d < 20 and not trend_is_down: cs += 2
+        if stoch_k > 80 and stoch_d > 80 and not trend_is_up: ps += 2
+
+        # 6. ADX Pure Trend
+        if trend_strong:
+            if di_pos > di_neg: cs += 4
+            else:               ps += 4
+
+        # 7. Volume Shield Engine
+        vol_ok = (vol > vol_ma * 0.85) if vol_ma > 0 else False
+        is_conflicted = abs(cs - ps) < 4
+
+        if is_conflicted or not vol_ok:
+            return "WAIT", 0
+        else:
+            if cs > ps and cs >= 8: # Baahi: 8+ Dhibcood oo nadiif ah
+                conf = min(60 + int((cs / (cs + (ps * 0.3))) * 35), 95)
+                return "CALL", conf
+            elif ps > cs and ps >= 8:
+                conf = min(60 + int((ps / (ps + (cs * 0.3))) * 35), 95)
+                return "PUT", conf
         return "WAIT", 0
-    else:
-        if call_score > put_score and call_score >= 8:
-            confidence = min(60 + int((call_score / (call_score + (put_score*0.3))) * 35), 95)
-            return "CALL", confidence
-        elif put_score > call_score and put_score >= 8:
-            confidence = min(60 + int((put_score / (put_score + (call_score*0.3))) * 35), 95)
-            return "PUT", confidence
-    return "WAIT", 0
+    except:
+        return "WAIT", 0
 
-# ── SCANNER BUTTON ──
-st.subheader("🔍 Scan- garee Dhamaan Fursadaha Suuqa")
-st.write("Markaad badanka hoose riixdo, bot-ku wuxuu baari doonaa dhammaan lacagaha iyo waqtiyada kala duwan si uu u helo fursad furan hadda.")
+# ── SESSION STATE ──────────────────────────────────────────────────────────
+if "auto_running" not in st.session_state:
+    st.session_state.auto_running = False
+if "signals_found" not in st.session_state:
+    st.session_state.signals_found = []
+if "scan_count" not in st.session_state:
+    st.session_state.scan_count = 0
+if "last_scan_time" not in st.session_state:
+    st.session_state.last_scan_time = ""
 
-if st.button("🚀 RUN AUTOMATIC SCANNER", use_container_width=True):
-    found_signals = []
-    
-    progress_text = st.empty()
-    progress_bar = st.progress(0)
-    
-    total_scans = len(POCKET_OPTION_PAIRS)
-    
+# ── CONTROL BUTTONS ────────────────────────────────────────────────────────
+col1, col2, col3 = st.columns(3)
+with col1:
+    min_conf = st.selectbox("Min Confidence:", [75, 80, 85, 90], index=1)
+with col2:
+    if st.button("▶️ START AUTO SCAN", use_container_width=True, type="primary"):
+        st.session_state.auto_running = True
+        st.session_state.signals_found = []
+        st.session_state.scan_count = 0
+with col3:
+    if st.button("⏹️ STOP SCAN", use_container_width=True):
+        st.session_state.auto_running = False
+
+# ── STATUS BAR ─────────────────────────────────────────────────────────────
+status_box  = st.empty()
+progress_ph = st.empty()
+scan_info   = st.empty()
+
+# ── SIGNALS TABLE ──────────────────────────────────────────────────────────
+st.markdown("---")
+st.subheader("🎯 Fursadaha la Helay — Pure Signals Only")
+results_ph = st.empty()
+
+def render_signals(signals):
+    if not signals:
+        results_ph.info("Scanner socda... Sug inta uu ka helayo signal buuxiyay shuruudaha adag.")
+        return
+    rows = []
+    for s in reversed(signals[-50:]):
+        emoji = "🟩 CALL ↑" if s["sig"] == "CALL" else "🟥 PUT ↓"
+        rows.append({
+            "⏰ Waqti":     s["time"],
+            "💱 Pair":      s["pair"],
+            "📊 Timeframe": s["tf"],
+            "📈 Signal":    emoji,
+            "🎯 Confidence":f"{s['conf']}%",
+            "🏷️ Nooc":      "OTC" if "OTC" in s["pair"] else "Real"
+        })
+    df_show = pd.DataFrame(rows)
+    results_ph.dataframe(df_show, use_container_width=True, hide_index=True)
+
+# ── AUTO SCAN LOOP ─────────────────────────────────────────────────────────
+if st.session_state.auto_running:
+    status_box.success(f"🟢 AUTO SCAN SOCDA (V6.1) | Scan #{st.session_state.scan_count + 1} | "
+                       f"Fursado Nadiif ah: {len(st.session_state.signals_found)}")
+
+    new_found = 0
+    total     = len(POCKET_OPTION_PAIRS)
+
     for idx, pair in enumerate(POCKET_OPTION_PAIRS):
-        progress_text.text(f"Baarayaa: {pair} ({idx+1}/{total_scans})... ⏳")
-        progress_bar.progress((idx + 1) / total_scans)
-        
+        pct = (idx + 1) / total
+        progress_ph.progress(pct, text=f"Baarayaa: {pair} ({idx+1}/{total})")
+
         ticker = get_yahoo_ticker(pair)
-        
-        # Isku mar u baar dhamaan afarta timeframe ee pair-kan
         for tf in TIMEFRAMES:
-            df = fetch_market_data_silent(ticker, tf)
+            df = fetch_data(ticker, tf)
             if not df.empty:
-                sig, con = analyze_signal_silent(df)
-                if sig in ["CALL", "PUT"] and con >= 80: # Kaliya signals-ka adag soo saar
-                    found_signals.append({
-                        "Pair": pair,
-                        "Timeframe": tf,
-                        "Signal Direction": "🟩 CALL" if sig == "CALL" else "🟥 PUT",
-                        "Confidence": f"{con}%",
-                        "Time Found": datetime.now().strftime("%H:%M:%S")
-                    })
-                    
-    progress_text.text("Scan-kii waa dhammaaday! ✅")
-    
-    st.markdown("---")
-    st.subheader("🎯 Fursadaha Furan Hadda (Signals Detected)")
-    
-    if len(found_signals) > 0:
-        # U beddel shaxan (Table) qurux badan si sahal loogu akhriyo
-        df_signals = pd.DataFrame(found_signals)
-        
-        # Habayn midabayn UI ah
-        st.dataframe(df_signals, use_container_width=True, hide_index=True)
-        
-        st.success(f"Waxaa la helay **{len(found_signals)}** fursadood oo aad u adag oo aad hadda Pocket Option ka gali karto!")
+                sig, conf = analyze(df)
+                if sig in ["CALL", "PUT"] and conf >= min_conf:
+                    now_str = datetime.now().strftime("%H:%M")
+                    dup = any(
+                        x["pair"] == pair and x["tf"] == tf
+                        and x["sig"] == sig and x["time"][:5] == now_str
+                        for x in st.session_state.signals_found[-20:]
+                    )
+                    if not dup:
+                        st.session_state.signals_found.append({
+                            "pair": pair, "tf": tf,
+                            "sig": sig,  "conf": conf,
+                            "time": datetime.now().strftime("%H:%M:%S")
+                        })
+                        new_found += 1
+
+    st.session_state.scan_count += 1
+    st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
+
+    scan_info.info(
+        f"✅ Scan #{st.session_state.scan_count} dhamaaday | Cusub: +{new_found} | Wadarta: {len(st.session_state.signals_found)}"
+    )
+
+    render_signals(st.session_state.signals_found)
+
+    time.sleep(5)
+    st.rerun()
+
+else:
+    if st.session_state.scan_count > 0:
+        status_box.warning(f"🔴 SCAN JOOJIYAY — Wadarta Fursadaha Nadiifta ah: {len(st.session_state.signals_found)}")
+        render_signals(st.session_state.signals_found)
     else:
-        st.warning("Hadda ma jiraan fursadaha buuxiyey shuruudihii adkaa ee v6. Sug dhowr daqiiqo ka dibna mar kale run garee scanner-ka.")
+        status_box.info("⚪ Scanner diyaar — Riix START si aad u bilowdo scan-ka saxda ah")
+        results_ph.info("Fursadaha halkan ayay soo muuqan doonaan markii scanner-ka la bilaabo.")
+
+st.markdown("---")
+st.caption("⚠️ Mahad AI Note: Koodhkan v6.1 wuxuu leeyahay 'Conflict Shield'. Haddii suuqu qasan yahay iskama dhiibayo signal ilaa uu 100% hubiyo.")
