@@ -7,13 +7,13 @@ import time
 from datetime import datetime
 
 st.set_page_config(
-    page_title="Mahad AI - Auto Scanner v6.1",
+    page_title="Mahad AI - Smart Scanner v6.2",
     page_icon="⚡",
     layout="wide"
 )
 
-st.title("⚡ PROV MAHAD ULTIMATE AI v6.1 — ULTRA SCANNER")
-st.write("Real-Time Multi-Pair Scanner | Conflict Shield + High Accuracy Engine | OTC + Real Market")
+st.title("⚡ PROV MAHAD ULTIMATE AI v6.2 — SMART FILTER")
+st.write("Real-Time Multi-Pair Scanner | Kaliya 3-5 Fursadood oo ugu Fiican | OTC + Real Market")
 
 POCKET_OPTION_PAIRS = [
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", "USD/CAD",
@@ -131,14 +131,14 @@ def analyze(df):
         vol      = s(r["Volume"],   0)
         vol_ma   = s(r["VOL_MA"],   1)
 
-        trend_strong = adx > 22
+        trend_strong = adx > 20
         trend_is_up  = trend_strong and di_pos > di_neg
         trend_is_down= trend_strong and di_neg > di_pos
 
         cs = 0  # call score
         ps = 0  # put score
 
-        # 1. RSI — Trend-Lock Logic
+        # 1. RSI Logic
         if rsi < 25:
             if trend_is_down: ps += 3
             else: cs += 4
@@ -169,7 +169,7 @@ def analyze(df):
             ps += 2
             if macd_h < macd_h2: ps += 1
 
-        # 4. Bollinger Bands (FIXED: Middle Band Noise Removed)
+        # 4. Bollinger Bands
         if price <= bb_low_v:
             if trend_is_down: ps += 2
             else: cs += 3
@@ -181,22 +181,22 @@ def analyze(df):
         if stoch_k < 20 and stoch_d < 20 and not trend_is_down: cs += 2
         if stoch_k > 80 and stoch_d > 80 and not trend_is_up: ps += 2
 
-        # 6. ADX Pure Trend
+        # 6. ADX Trend
         if trend_strong:
             if di_pos > di_neg: cs += 4
             else:               ps += 4
 
-        # 7. Volume Shield Engine
-        vol_ok = (vol > vol_ma * 0.85) if vol_ma > 0 else False
+        # 7. Volume Filter
+        vol_ok = (vol > vol_ma * 0.80) if vol_ma > 0 else False
         is_conflicted = abs(cs - ps) < 4
 
         if is_conflicted or not vol_ok:
             return "WAIT", 0
         else:
-            if cs > ps and cs >= 8: # Baahi: 8+ Dhibcood oo nadiif ah
+            if cs > ps and cs >= 7: # Waxaan ka dhignay 7 dhibcood si uu signals u helo
                 conf = min(60 + int((cs / (cs + (ps * 0.3))) * 35), 95)
                 return "CALL", conf
-            elif ps > cs and ps >= 8:
+            elif ps > cs and ps >= 7:
                 conf = min(60 + int((ps / (ps + (cs * 0.3))) * 35), 95)
                 return "PUT", conf
         return "WAIT", 0
@@ -210,57 +210,31 @@ if "signals_found" not in st.session_state:
     st.session_state.signals_found = []
 if "scan_count" not in st.session_state:
     st.session_state.scan_count = 0
-if "last_scan_time" not in st.session_state:
-    st.session_state.last_scan_time = ""
 
 # ── CONTROL BUTTONS ────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
-    min_conf = st.selectbox("Min Confidence:", [75, 80, 85, 90], index=1)
-with col2:
     if st.button("▶️ START AUTO SCAN", use_container_width=True, type="primary"):
         st.session_state.auto_running = True
         st.session_state.signals_found = []
         st.session_state.scan_count = 0
-with col3:
+with col2:
     if st.button("⏹️ STOP SCAN", use_container_width=True):
         st.session_state.auto_running = False
 
-# ── STATUS BAR ─────────────────────────────────────────────────────────────
 status_box  = st.empty()
 progress_ph = st.empty()
-scan_info   = st.empty()
 
-# ── SIGNALS TABLE ──────────────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("🎯 Fursadaha la Helay — Pure Signals Only")
+st.subheader("🎯 3-ta Fursadood ee Ugu Fiican Hada (Top Clean Signals)")
 results_ph = st.empty()
-
-def render_signals(signals):
-    if not signals:
-        results_ph.info("Scanner socda... Sug inta uu ka helayo signal buuxiyay shuruudaha adag.")
-        return
-    rows = []
-    for s in reversed(signals[-50:]):
-        emoji = "🟩 CALL ↑" if s["sig"] == "CALL" else "🟥 PUT ↓"
-        rows.append({
-            "⏰ Waqti":     s["time"],
-            "💱 Pair":      s["pair"],
-            "📊 Timeframe": s["tf"],
-            "📈 Signal":    emoji,
-            "🎯 Confidence":f"{s['conf']}%",
-            "🏷️ Nooc":      "OTC" if "OTC" in s["pair"] else "Real"
-        })
-    df_show = pd.DataFrame(rows)
-    results_ph.dataframe(df_show, use_container_width=True, hide_index=True)
 
 # ── AUTO SCAN LOOP ─────────────────────────────────────────────────────────
 if st.session_state.auto_running:
-    status_box.success(f"🟢 AUTO SCAN SOCDA (V6.1) | Scan #{st.session_state.scan_count + 1} | "
-                       f"Fursado Nadiif ah: {len(st.session_state.signals_found)}")
+    status_box.success(f"🟢 AUTO SCAN SOCDA | Wareegga #{st.session_state.scan_count + 1}")
 
-    new_found = 0
-    total     = len(POCKET_OPTION_PAIRS)
+    current_round_signals = []
+    total = len(POCKET_OPTION_PAIRS)
 
     for idx, pair in enumerate(POCKET_OPTION_PAIRS):
         pct = (idx + 1) / total
@@ -271,40 +245,46 @@ if st.session_state.auto_running:
             df = fetch_data(ticker, tf)
             if not df.empty:
                 sig, conf = analyze(df)
-                if sig in ["CALL", "PUT"] and conf >= min_conf:
-                    now_str = datetime.now().strftime("%H:%M")
-                    dup = any(
-                        x["pair"] == pair and x["tf"] == tf
-                        and x["sig"] == sig and x["time"][:5] == now_str
-                        for x in st.session_state.signals_found[-20:]
-                    )
-                    if not dup:
-                        st.session_state.signals_found.append({
-                            "pair": pair, "tf": tf,
-                            "sig": sig,  "conf": conf,
-                            "time": datetime.now().strftime("%H:%M:%S")
-                        })
-                        new_found += 1
+                if sig in ["CALL", "PUT"]:
+                    current_round_signals.append({
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "pair": pair,
+                        "tf": tf,
+                        "sig": sig,
+                        "conf": conf
+                    })
+
+    # ── MAX 3 SIGNALS FILTER LOGIC ──
+    # Halkan waxaan ku kala saaraynaa kalsoonida ugu sarreysa (Highest Confidence)
+    if current_round_signals:
+        current_round_signals = sorted(current_round_signals, key=lambda x: x["conf"], reverse=True)
+        # Kaliya qaado 3-da ugu sareysa si uusan isticmaaluhu u wareerin
+        st.session_state.signals_found = current_round_signals[:3]
+    else:
+        st.session_state.signals_found = []
 
     st.session_state.scan_count += 1
-    st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
 
-    scan_info.info(
-        f"✅ Scan #{st.session_state.scan_count} dhamaaday | Cusub: +{new_found} | Wadarta: {len(st.session_state.signals_found)}"
-    )
-
-    render_signals(st.session_state.signals_found)
+    # Render- garee shaxda yar ee kooban
+    if not st.session_state.signals_found:
+        results_ph.info("Wareeggan wax signal oo adag lama helin. Sug scan-ka xiga 5s ka dib...")
+    else:
+        rows = []
+        for s in st.session_state.signals_found:
+            emoji = "🟩 CALL ↑" if s["sig"] == "CALL" else "🟥 PUT ↓"
+            rows.append({
+                "⏰ Waqti":     s["time"],
+                "💱 Pair":      s["pair"],
+                "📊 Timeframe": s["tf"],
+                "📈 Signal":    emoji,
+                "🎯 Kalsooni": f"{s['conf']}%",
+                "🏷️ Nooc":      "OTC" if "OTC" in s["pair"] else "Real"
+            })
+        results_ph.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     time.sleep(5)
     st.rerun()
 
 else:
-    if st.session_state.scan_count > 0:
-        status_box.warning(f"🔴 SCAN JOOJIYAY — Wadarta Fursadaha Nadiifta ah: {len(st.session_state.signals_found)}")
-        render_signals(st.session_state.signals_found)
-    else:
-        status_box.info("⚪ Scanner diyaar — Riix START si aad u bilowdo scan-ka saxda ah")
-        results_ph.info("Fursadaha halkan ayay soo muuqan doonaan markii scanner-ka la bilaabo.")
-
-st.markdown("---")
-st.caption("⚠️ Mahad AI Note: Koodhkan v6.1 wuxuu leeyahay 'Conflict Shield'. Haddii suuqu qasan yahay iskama dhiibayo signal ilaa uu 100% hubiyo.")
+    status_box.info("White Scanner diyaar — Riix START si aad u bilowdo scan-ka kooban")
+    results_ph.info("Kaliya 3-da fursadood ee ugu fiican ayaa halkan ku soo bixi doona mar kasta.")
