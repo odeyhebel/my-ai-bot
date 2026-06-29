@@ -7,13 +7,13 @@ import time
 from datetime import datetime
 
 st.set_page_config(
-    page_title="Mahad AI - Smart Scanner v6.2",
+    page_title="Mahad AI - Auto Scanner v6",
     page_icon="⚡",
     layout="wide"
 )
 
-st.title("⚡ PROV MAHAD ULTIMATE AI v6.2 — SMART FILTER")
-st.write("Real-Time Multi-Pair Scanner | Kaliya 3-5 Fursadood oo ugu Fiican | OTC + Real Market")
+st.title("⚡ PROV MAHAD ULTIMATE AI v6 — AUTO SCANNER")
+st.write("Real-Time Multi-Pair Scanner | 5 Seconds Kasta | OTC + Real Market")
 
 POCKET_OPTION_PAIRS = [
     "AUD/USD", "EUR/USD", "EUR/JPY", "AUD/JPY", "USD/JPY", "EUR/CAD", "USD/CAD",
@@ -47,6 +47,7 @@ def get_yahoo_ticker(pair_name):
         return f"{parts[0]}{parts[1]}=X"
     return "EURUSD=X"
 
+
 def fetch_data(ticker_name, tf):
     try:
         fetch_tf = "1m" if tf in ["2m", "3m"] else tf
@@ -65,6 +66,7 @@ def fetch_data(ticker_name, tf):
         return df.dropna()
     except:
         return pd.DataFrame()
+
 
 def analyze(df):
     try:
@@ -90,6 +92,7 @@ def analyze(df):
         bb      = ta.bbands(close, length=20, std=2)
         bb_cols = bb.columns.tolist()
         df["BB_LOW"] = bb[[c for c in bb_cols if c.startswith("BBL")][0]]
+        df["BB_MID"] = bb[[c for c in bb_cols if c.startswith("BBM")][0]]
         df["BB_UP"]  = bb[[c for c in bb_cols if c.startswith("BBU")][0]]
 
         stoch      = ta.stoch(high, low, close, k=14, d=3)
@@ -123,8 +126,10 @@ def analyze(df):
         macd_h2  = s(r2["MACD_HIST"],0)
         bb_up    = s(r["BB_UP"],    price*1.01)
         bb_low_v = s(r["BB_LOW"],   price*0.99)
+        bb_mid   = s(r["BB_MID"],   price)
         stoch_k  = s(r["STOCH_K"],  50)
         stoch_d  = s(r["STOCH_D"],  50)
+        stoch_k2 = s(r2["STOCH_K"], 50)
         adx      = s(r["ADX"],      0)
         di_pos   = s(r["DI_POS"],   0)
         di_neg   = s(r["DI_NEG"],   0)
@@ -138,15 +143,15 @@ def analyze(df):
         cs = 0  # call score
         ps = 0  # put score
 
-        # 1. RSI Logic
+        # RSI — trend following
         if rsi < 25:
-            if trend_is_down: ps += 3
-            else: cs += 4
+            if not trend_is_down: cs += 3
+            else: ps += 2
         elif rsi < 35 and not trend_is_down:
             cs += 2
         if rsi > 75:
-            if trend_is_up: cs += 3
-            else: ps += 4
+            if not trend_is_up: ps += 3
+            else: cs += 2
         elif rsi > 65 and not trend_is_up:
             ps += 2
 
@@ -154,54 +159,63 @@ def analyze(df):
         if rsi6 < 20 and not trend_is_down: cs += 1
         elif rsi6 > 80 and not trend_is_up:  ps += 1
 
-        # 2. EMA Structure
+        # EMA
         if ema9 > ema21 > ema50:   cs += 4
+        elif ema9 > ema21:          cs += 1
         if ema9 < ema21 < ema50:   ps += 4
+        elif ema9 < ema21:          ps += 1
 
         if price > ema200: cs += 1
         else:              ps += 1
 
-        # 3. MACD
-        if macd > macd_sig and macd_h > 0:
-            cs += 2
-            if macd_h > macd_h2: cs += 1
-        elif macd < macd_sig and macd_h < 0:
-            ps += 2
-            if macd_h < macd_h2: ps += 1
+        # MACD
+        if macd > macd_sig and macd_h > 0 and macd_h > macd_h2:   cs += 2
+        elif macd > macd_sig and macd_h > 0:                        cs += 1
+        elif macd < macd_sig and macd_h < 0 and macd_h < macd_h2: ps += 2
+        elif macd < macd_sig and macd_h < 0:                        ps += 1
 
-        # 4. Bollinger Bands
+        # Bollinger
         if price <= bb_low_v:
-            if trend_is_down: ps += 2
-            else: cs += 3
+            if not trend_is_down: cs += 3
+            else: ps += 1
         elif price >= bb_up:
-            if trend_is_up: cs += 2
-            else: ps += 3
+            if not trend_is_up: ps += 3
+            else: cs += 1
+        elif price < bb_mid: cs += 1
+        elif price > bb_mid: ps += 1
 
-        # 5. Stochastic
+        # Stochastic
         if stoch_k < 20 and stoch_d < 20 and not trend_is_down: cs += 2
+        elif stoch_k > stoch_d and stoch_k2 < stoch_d and stoch_k < 40: cs += 2
         if stoch_k > 80 and stoch_d > 80 and not trend_is_up: ps += 2
+        elif stoch_k < stoch_d and stoch_k2 > stoch_d and stoch_k > 60: ps += 2
 
-        # 6. ADX Trend
+        # ADX
         if trend_strong:
-            if di_pos > di_neg: cs += 4
-            else:               ps += 4
+            if di_pos > di_neg: cs += 3
+            else:               ps += 3
 
-        # 7. Volume Filter
-        vol_ok = (vol > vol_ma * 0.80) if vol_ma > 0 else False
-        is_conflicted = abs(cs - ps) < 4
-
-        if is_conflicted or not vol_ok:
-            return "WAIT", 0
+        # Volume penalty
+        vol_ok = (vol > vol_ma * 0.8) if vol_ma > 0 else False
+        if vol_ok:
+            if cs > ps: cs += 1
+            elif ps > cs: ps += 1
         else:
-            if cs > ps and cs >= 7: # Waxaan ka dhignay 7 dhibcood si uu signals u helo
-                conf = min(60 + int((cs / (cs + (ps * 0.3))) * 35), 95)
-                return "CALL", conf
-            elif ps > cs and ps >= 7:
-                conf = min(60 + int((ps / (ps + (cs * 0.3))) * 35), 95)
-                return "PUT", conf
+            cs = max(0, cs - 2)
+            ps = max(0, ps - 2)
+
+        total = (cs + ps) if (cs + ps) > 0 else 1
+
+        if cs > ps and cs >= 6:
+            conf = min(50 + int((cs / total) * 45), 95)
+            return "CALL", conf
+        elif ps > cs and ps >= 6:
+            conf = min(50 + int((ps / total) * 45), 95)
+            return "PUT", conf
         return "WAIT", 0
     except:
         return "WAIT", 0
+
 
 # ── SESSION STATE ──────────────────────────────────────────────────────────
 if "auto_running" not in st.session_state:
@@ -210,31 +224,59 @@ if "signals_found" not in st.session_state:
     st.session_state.signals_found = []
 if "scan_count" not in st.session_state:
     st.session_state.scan_count = 0
+if "last_scan_time" not in st.session_state:
+    st.session_state.last_scan_time = ""
 
 # ── CONTROL BUTTONS ────────────────────────────────────────────────────────
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
+    min_conf = st.selectbox("Min Confidence:", [70, 75, 80, 85, 90], index=1)
+with col2:
     if st.button("▶️ START AUTO SCAN", use_container_width=True, type="primary"):
         st.session_state.auto_running = True
         st.session_state.signals_found = []
         st.session_state.scan_count = 0
-with col2:
+with col3:
     if st.button("⏹️ STOP SCAN", use_container_width=True):
         st.session_state.auto_running = False
 
+# ── STATUS BAR ─────────────────────────────────────────────────────────────
 status_box  = st.empty()
 progress_ph = st.empty()
+scan_info   = st.empty()
 
+# ── SIGNALS TABLE ──────────────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("🎯 3-ta Fursadood ee Ugu Fiican Hada (Top Clean Signals)")
+st.subheader("🎯 Fursadaha la Helay — Live")
 results_ph = st.empty()
+
+def render_signals(signals):
+    if not signals:
+        results_ph.info("Scanner socda... fursad haddaan la helin weli.")
+        return
+    rows = []
+    for s in reversed(signals[-50:]):   # ugu dambeeyay 50
+        emoji = "🟩 CALL ↑" if s["sig"] == "CALL" else "🟥 PUT ↓"
+        rows.append({
+            "⏰ Waqti":     s["time"],
+            "💱 Pair":      s["pair"],
+            "📊 Timeframe": s["tf"],
+            "📈 Signal":    emoji,
+            "🎯 Confidence":f"{s['conf']}%",
+            "🏷️ Nooc":      "OTC" if "OTC" in s["pair"] else "Real"
+        })
+    df_show = pd.DataFrame(rows)
+    results_ph.dataframe(df_show, use_container_width=True, hide_index=True)
+
 
 # ── AUTO SCAN LOOP ─────────────────────────────────────────────────────────
 if st.session_state.auto_running:
-    status_box.success(f"🟢 AUTO SCAN SOCDA | Wareegga #{st.session_state.scan_count + 1}")
+    status_box.success(f"🟢 AUTO SCAN SOCDA | Scan #{st.session_state.scan_count + 1} | "
+                       f"Fursado: {len(st.session_state.signals_found)} | "
+                       f"Waqti: {datetime.now().strftime('%H:%M:%S')}")
 
-    current_round_signals = []
-    total = len(POCKET_OPTION_PAIRS)
+    new_found = 0
+    total     = len(POCKET_OPTION_PAIRS)
 
     for idx, pair in enumerate(POCKET_OPTION_PAIRS):
         pct = (idx + 1) / total
@@ -245,46 +287,44 @@ if st.session_state.auto_running:
             df = fetch_data(ticker, tf)
             if not df.empty:
                 sig, conf = analyze(df)
-                if sig in ["CALL", "PUT"]:
-                    current_round_signals.append({
-                        "time": datetime.now().strftime("%H:%M:%S"),
-                        "pair": pair,
-                        "tf": tf,
-                        "sig": sig,
-                        "conf": conf
-                    })
-
-    # ── MAX 3 SIGNALS FILTER LOGIC ──
-    # Halkan waxaan ku kala saaraynaa kalsoonida ugu sarreysa (Highest Confidence)
-    if current_round_signals:
-        current_round_signals = sorted(current_round_signals, key=lambda x: x["conf"], reverse=True)
-        # Kaliya qaado 3-da ugu sareysa si uusan isticmaaluhu u wareerin
-        st.session_state.signals_found = current_round_signals[:3]
-    else:
-        st.session_state.signals_found = []
+                if sig in ["CALL", "PUT"] and conf >= min_conf:
+                    # Check in duplicate aan ahayn (isla pair+tf+sig 60s gudihiis)
+                    now_str = datetime.now().strftime("%H:%M")
+                    dup = any(
+                        x["pair"] == pair and x["tf"] == tf
+                        and x["sig"] == sig and x["time"][:5] == now_str
+                        for x in st.session_state.signals_found[-20:]
+                    )
+                    if not dup:
+                        st.session_state.signals_found.append({
+                            "pair": pair, "tf": tf,
+                            "sig": sig,  "conf": conf,
+                            "time": datetime.now().strftime("%H:%M:%S")
+                        })
+                        new_found += 1
 
     st.session_state.scan_count += 1
+    st.session_state.last_scan_time = datetime.now().strftime("%H:%M:%S")
 
-    # Render- garee shaxda yar ee kooban
-    if not st.session_state.signals_found:
-        results_ph.info("Wareeggan wax signal oo adag lama helin. Sug scan-ka xiga 5s ka dib...")
-    else:
-        rows = []
-        for s in st.session_state.signals_found:
-            emoji = "🟩 CALL ↑" if s["sig"] == "CALL" else "🟥 PUT ↓"
-            rows.append({
-                "⏰ Waqti":     s["time"],
-                "💱 Pair":      s["pair"],
-                "📊 Timeframe": s["tf"],
-                "📈 Signal":    emoji,
-                "🎯 Kalsooni": f"{s['conf']}%",
-                "🏷️ Nooc":      "OTC" if "OTC" in s["pair"] else "Real"
-            })
-        results_ph.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    scan_info.info(
+        f"✅ Scan #{st.session_state.scan_count} dhamaaday — {st.session_state.last_scan_time} | "
+        f"Cusub: +{new_found} | Wadarta: {len(st.session_state.signals_found)}"
+    )
 
+    render_signals(st.session_state.signals_found)
+
+    # 5 second u dib u soo celi
     time.sleep(5)
     st.rerun()
 
 else:
-    status_box.info("White Scanner diyaar — Riix START si aad u bilowdo scan-ka kooban")
-    results_ph.info("Kaliya 3-da fursadood ee ugu fiican ayaa halkan ku soo bixi doona mar kasta.")
+    if st.session_state.scan_count > 0:
+        status_box.warning(f"🔴 SCAN JOOJIYAY — Scan {st.session_state.scan_count} baa la sameeyay | "
+                           f"Fursado: {len(st.session_state.signals_found)}")
+        render_signals(st.session_state.signals_found)
+    else:
+        status_box.info("⚪ Scanner diyaar — START riix si aad u bilowdo")
+        results_ph.info("Fursadaha halkan ayay soo muuqan doonaan markii scanner-ka la bilaabo.")
+
+st.markdown("---")
+st.caption("⚠️ Trading-ku khatarna waa. Signal-kani waa taageero keliya — demo ku tijaabi marka hore.")
