@@ -50,11 +50,11 @@ if selected_tf != st.session_state.tf_state or selected_conf != st.session_state
     st.session_state.conf_state = selected_conf
     st.rerun()
 
-# ── DATA FETCH ─────────────────────────────────────────────────────────────
+# ── DATA FETCH (CLAUDE UNCLOSED CANDLE FIX) ───────────────────────────────
 def get_ohlc(pair, tf):
     ticker = f"{pair}=X"
     if tf in ["1m","3m"]:
-        fetch_interval, period = "1m", "2d"
+        fetch_interval, period = "1m", "5d"
     elif tf in ["5m","10m"]:
         fetch_interval, period = "5m", "5d"
     else:
@@ -65,11 +65,19 @@ def get_ohlc(pair, tf):
             return None
         if df.index.tz is not None:
             df.index = df.index.tz_convert("UTC").tz_localize(None)
+        
+        # Resampling iyo Tuurista Kandalka hadda socda (Unclosed Candle Fix)
         if tf == "3m":
             df = df.resample("3min").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
+            df = df.iloc[:-1] # TUUR kandalka ugu dambeeya ee weli socda
         elif tf == "10m":
             df = df.resample("10min").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
-        if len(df) < 30:
+            df = df.iloc[:-1] # TUUR kandalka ugu dambeeya ee weli socda
+        else:
+            # Xitaa 1m, 5m, iyo 15m raw data-ga laga tuuro kandalka hadda socda
+            df = df.iloc[:-1]
+
+        if len(df) < 50:
             return None
         return {"close":df["Close"].tolist(),"high":df["High"].tolist(),"low":df["Low"].tolist(),"open":df["Open"].tolist()}
     except:
@@ -81,7 +89,7 @@ def analyze_signal(ohlc):
         close = pd.Series(ohlc["close"], dtype=float)
         high  = pd.Series(ohlc["high"],  dtype=float)
         low   = pd.Series(ohlc["low"],   dtype=float)
-        if len(close) < 30: return None
+        if len(close) < 50: return None
 
         price = close.iloc[-1]
 
@@ -120,7 +128,7 @@ def analyze_signal(ohlc):
             if long_cols:
                 psar_rising = not pd.isna(psar_df[long_cols[0]].iloc[-1])
 
-        # ADX — STEP 1: xisaabi
+        # ADX
         adx = 20.0
         adx_df = ta.adx(high, low, close, length=14)
         if adx_df is not None and not adx_df.empty:
@@ -128,7 +136,6 @@ def analyze_signal(ohlc):
             adx = float(adx_df[adx_cols[0]].iloc[-1]) if adx_cols else float(adx_df.iloc[-1,0])
         adx = min(90.0, max(8.0, adx))
 
-        # STEP 2: ADX < 20 = ranging market → NEUTRAL toos ah, KAHOR scoring
         if adx < 20:
             return {
                 "price": price, "rsi": round(rsi,1),
@@ -166,18 +173,15 @@ def analyze_signal(ohlc):
         if   ema5 > ema10 > ema20: buy_score  += 2; buy_inds.append('EMA↑')
         elif ema5 < ema10 < ema20: sell_score += 2; sell_inds.append('EMA↓')
 
-        # ADX multiplier
         trend_strength = 1.3 if adx > 25 else 1.1
         buy_score  *= trend_strength
         sell_score *= trend_strength
 
-        # STEP 3: Confidence — ADX-ga ku salaysan cap
         total = buy_score + sell_score
         raw_conf = round((max(buy_score, sell_score) / total * 100 * 0.6) + 40) if total > 0 else 50
         conf_cap = 70 if adx < 25 else (85 if adx < 35 else 95)
         capped_conf = min(conf_cap, max(50, raw_conf))
 
-        # STEP 4: Signal type
         diff = buy_score - sell_score
         if   diff >  3: signal_type, direction = 'strong-buy',  'buy'
         elif diff >  1: signal_type, direction = 'buy',         'buy'
