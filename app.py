@@ -1,305 +1,324 @@
-import streamlit as st
-import yfinance as yf
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
+import numpy as np
 import pandas as pd
-import pandas_ta as ta
-from datetime import datetime
+import streamlit as st
 
-st.set_page_config(page_title="MAHAD SIGNALS PRO", page_icon="⚡", layout="wide")
-st.markdown("""
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .block-container {padding-top: 1rem; padding-bottom: 1rem; max-width: 480px; margin: 0 auto;}
-    [data-testid="stSidebar"] {display: none;}
-    div.stButton > button {
-        background: linear-gradient(135deg, #0099cc, #7b61ff);
-        color: white; font-weight: 700; font-size: 16px;
-        letter-spacing: 2px; border: none; border-radius: 10px;
-        padding: 13px; width: 100%;
-    }
-    div.stButton > button:hover { opacity: 0.85; }
-    </style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="PROV MAHAD - Auto ML", layout="wide", initial_sidebar_state="collapsed")
 
-PAIRS = [
-    'EURUSD', 'EURJPY', 'EURCHF', 'EURCAD', 'EURAUD',
-    'AUDUSD', 'AUDJPY', 'AUDCHF', 'AUDCAD',
-    'CADCHF', 'CADJPY', 'CHFJPY',
-    'USDCAD', 'USDCHF', 'USDJPY'
-]
-TF_OPTIONS = {"1m":"1 min","3m":"3 min","5m":"5 min","10m":"10 min","15m":"15 min"}
-EXPIRY_MAP = {"1m":"1 min","3m":"3 min","5m":"5 min","10m":"10 min","15m":"15 min"}
+# ──────────────────────────────────────────────────────────────
+# 1) INDICATOR CALCULATIONS (Koodkaagii Hore)
+# ──────────────────────────────────────────────────────────────
 
-if "tf_state"   not in st.session_state: st.session_state.tf_state   = "3m"
-if "conf_state" not in st.session_state: st.session_state.conf_state = 60
+def calc_rsi(close, period=14):
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50)
 
-col1, col2 = st.columns(2)
-with col1:
-    selected_tf = st.selectbox("Timeframe", list(TF_OPTIONS.keys()),
-        format_func=lambda x: TF_OPTIONS[x],
-        index=list(TF_OPTIONS.keys()).index(st.session_state.tf_state))
-with col2:
-    conf_options = [50, 60, 70, 80]
-    selected_conf = st.selectbox("Min Confidence", conf_options,
-        format_func=lambda x: f"{x}%+",
-        index=conf_options.index(st.session_state.conf_state))
+def calc_macd(close, fast=12, slow=26, signal=9):
+    ema_fast = close.ewm(span=fast, adjust=False).mean()
+    ema_slow = close.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    hist = macd_line - signal_line
+    return macd_line, signal_line, hist
 
-if selected_tf != st.session_state.tf_state or selected_conf != st.session_state.conf_state:
-    st.session_state.tf_state   = selected_tf
-    st.session_state.conf_state = selected_conf
-    st.rerun()
+def calc_bollinger(close, period=20, std_mult=2):
+    sma = close.rolling(period).mean()
+    std = close.rolling(period).std()
+    upper = sma + std_mult * std
+    lower = sma - std_mult * std
+    percent_b = (close - lower) / (upper - lower).replace(0, np.nan)
+    return percent_b.fillna(0.5)
 
-# ── DATA FETCH (CLAUDE UNCLOSED CANDLE FIX) ───────────────────────────────
-def get_ohlc(pair, tf):
-    ticker = f"{pair}=X"
-    if tf in ["1m","3m"]:
-        fetch_interval, period = "1m", "5d"
-    elif tf in ["5m","10m"]:
-        fetch_interval, period = "5m", "5d"
+def calc_stochastic(high, low, close, period=14):
+    lowest = low.rolling(period).min()
+    highest = high.rolling(period).max()
+    k = (close - lowest) / (highest - lowest).replace(0, np.nan) * 100
+    return k.fillna(50)
+
+def calc_cci(high, low, close, period=20):
+    tp = (high + low + close) / 3
+    sma = tp.rolling(period).mean()
+    mean_dev = tp.rolling(period).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=True)
+    cci = (tp - sma) / (0.015 * mean_dev.replace(0, np.nan))
+    return cci.fillna(0)
+
+def calc_adx(high, low, close, period=14):
+    plus_dm = high.diff()
+    minus_dm = -low.diff()
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm < 0] = 0
+
+    plus_dm[(plus_dm - minus_dm) < 0] = 0
+    minus_dm[(minus_dm - plus_dm) < 0] = 0
+
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    plus_di = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan))
+    minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan))
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
+
+# ──────────────────────────────────────────────────────────────
+# 2) DATA FETCH (Koodkaagii Hore)
+# ──────────────────────────────────────────────────────────────
+
+PAIRS = {
+    "EUR/USD": "EURUSD=X",
+    "EUR/JPY": "EURJPY=X",
+    "EUR/CHF": "EURCHF=X",
+    "EUR/CAD": "EURCAD=X",
+    "EUR/AUD": "EURAUD=X",
+    "AUD/USD": "AUDUSD=X",
+    "AUD/JPY": "AUDJPY=X",
+    "AUD/CHF": "AUDCHF=X",
+    "AUD/CAD": "AUDCAD=X",
+    "CAD/CHF": "CADCHF=X",
+    "CAD/JPY": "CADJPY=X",
+    "CHF/JPY": "CHFJPY=X",
+    "USD/CAD": "USDCAD=X",
+    "USD/CHF": "USDCHF=X",
+    "USD/JPY": "USDJPY=X",
+    "GBP/USD": "GBPUSD=X",
+    "GBP/AUD": "GBPAUD=X"
+}
+
+INTERVAL_PERIOD_MAP = {
+    "1m":  "7d",
+    "2m":  "60d",
+    "3m":  "7d",
+    "5m":  "60d",
+    "15m": "60d",
+    "1h":  "730d",
+    "1d":  "5y",
+}
+
+RESAMPLE_INTERVALS = {
+    "3m": ("1m", "3min"),
+}
+
+def _download_raw(ticker, interval, period):
+    import yfinance as yf
+    df = yf.download(ticker, period=period, interval=interval, progress=False, auto_adjust=True)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df.dropna()
+
+def _resample_ohlc(df, rule):
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
+    if "Volume" in df.columns:
+        agg["Volume"] = "sum"
+    out = df.resample(rule).agg(agg)
+    return out.dropna()
+
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_data(ticker, interval):
+    if interval in RESAMPLE_INTERVALS:
+        base_interval, rule = RESAMPLE_INTERVALS[interval]
+        base_period = INTERVAL_PERIOD_MAP.get(base_interval, "7d")
+        raw = _download_raw(ticker, base_interval, base_period)
+        df = _resample_ohlc(raw, rule)
     else:
-        fetch_interval, period = "15m", "5d"
-    try:
-        df = yf.Ticker(ticker).history(period=period, interval=fetch_interval)
-        if df is None or df.empty or len(df) < 50:
-            return None
-        if df.index.tz is not None:
-            df.index = df.index.tz_convert("UTC").tz_localize(None)
+        period = INTERVAL_PERIOD_MAP.get(interval, "60d")
+        df = _download_raw(ticker, interval, period)
         
-        # Resampling iyo Tuurista Kandalka hadda socda (Unclosed Candle Fix)
-        if tf == "3m":
-            df = df.resample("3min").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
-            df = df.iloc[:-1] # TUUR kandalka ugu dambeeya ee weli socda
-        elif tf == "10m":
-            df = df.resample("10min").agg({"Open":"first","High":"max","Low":"min","Close":"last","Volume":"sum"}).dropna()
-            df = df.iloc[:-1] # TUUR kandalka ugu dambeeya ee weli socda
-        else:
-            # Xitaa 1m, 5m, iyo 15m raw data-ga laga tuuro kandalka hadda socda
-            df = df.iloc[:-1]
+    if len(df) > 2:
+        df = df.iloc[:-1]
+    return df
 
-        if len(df) < 50:
-            return None
-        return {"close":df["Close"].tolist(),"high":df["High"].tolist(),"low":df["Low"].tolist(),"open":df["Open"].tolist()}
-    except:
-        return None
+# ──────────────────────────────────────────────────────────────
+# 3) FEATURE + LABEL BUILDING (Koodkaagii Hore)
+# ──────────────────────────────────────────────────────────────
 
-# ── SIGNAL ANALYSIS ────────────────────────────────────────────────────────
-def analyze_signal(ohlc):
+def build_features(df):
+    out = pd.DataFrame(index=df.index)
+    close, high, low = df["Close"], df["High"], df["Low"]
+
+    out["rsi"] = calc_rsi(close, 14)
+    macd_line, macd_signal, macd_hist = calc_macd(close)
+    out["macd_hist"] = macd_hist
+    out["bb_percent"] = calc_bollinger(close, 20, 2)
+    out["stoch_k"] = calc_stochastic(high, low, close, 14)
+    out["cci"] = calc_cci(high, low, close, 20)
+    adx, plus_di, minus_di = calc_adx(high, low, close, 14)
+    out["adx"] = adx
+    out["di_diff"] = plus_di - minus_di
+    out["return_1"] = close.pct_change(1)
+    out["return_5"] = close.pct_change(5)
+    return out
+
+def build_labels(df, horizon=1):
+    close = df["Close"]
+    future_return = close.shift(-horizon) / close - 1
+    label = (future_return > 0).astype(int)
+    return label, future_return
+
+# ──────────────────────────────────────────────────────────────
+# 4) TRAIN + BACKTEST (Precision Bug Fixed)
+# ──────────────────────────────────────────────────────────────
+
+def train_and_evaluate(features, labels, test_size=0.25):
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
+
+    data = features.copy()
+    data["label"] = labels
+    data = data.dropna()
+
+    split_idx = int(len(data) * (1 - test_size))
+    train, test = data.iloc[:split_idx], data.iloc[split_idx:]
+
+    feat_cols = [c for c in data.columns if c != "label"]
+    X_train, y_train = train[feat_cols], train["label"]
+    X_test, y_test = test[feat_cols], test["label"]
+
+    # Model-kaagii Hore oo aan waxba laga baddelin
+    model = RandomForestClassifier(
+        n_estimators=150, max_depth=5, min_samples_leaf=25,
+        random_state=42, n_jobs=1
+    )
+    model.fit(X_train, y_train)
+
+    proba_test = model.predict_proba(X_test)[:, 1]
+    pred_test = (proba_test >= 0.5).astype(int)
+
+    # SAXIDA PRECISION-KA: Zero division badbaado leh
+    prec = precision_score(y_test, pred_test, zero_division=0)
+    
+    # Haddii pred_test aanuu lahayn BUY (1), Precision-ka waxaa loo xisbinayaa saxaanaanta SELL-ka
+    if pred_test.sum() == 0:
+        prec = (y_test == 0).mean()
+
+    metrics = {
+        "accuracy": accuracy_score(y_test, pred_test),
+        "precision": prec,
+        "recall": recall_score(y_test, pred_test, zero_division=0),
+    }
     try:
-        close = pd.Series(ohlc["close"], dtype=float)
-        high  = pd.Series(ohlc["high"],  dtype=float)
-        low   = pd.Series(ohlc["low"],   dtype=float)
-        if len(close) < 50: return None
+        metrics["roc_auc"] = roc_auc_score(y_test, proba_test)
+    except ValueError:
+        metrics["roc_auc"] = float("nan")
 
-        price = close.iloc[-1]
+    return model, feat_cols, X_test, y_test, proba_test, metrics
 
-        # RSI
-        rsi_s = ta.rsi(close, length=14)
-        rsi = float(rsi_s.iloc[-1]) if rsi_s is not None and not rsi_s.empty else 50.0
+def accuracy_by_confidence(y_test, proba_test, thresholds):
+    rows = []
+    for t in thresholds:
+        buy_mask = proba_test >= t
+        sell_mask = proba_test <= (1 - t)
+        mask = buy_mask | sell_mask
+        n = mask.sum()
+        if n == 0:
+            continue
+        pred = np.where(buy_mask[mask], 1, 0)
+        actual = y_test[mask].values
+        acc = (pred == actual).mean()
+        rows.append({
+            "Confidence": f"{int(t*100)}%+",
+            "Trades": int(n),
+            "Accuracy Natiijo": f"{acc * 100:.1f}%"
+        })
+    return pd.DataFrame(rows)
 
-        # MACD
-        macd_df   = ta.macd(close, fast=12, slow=26, signal=9)
-        macd_hist = 0.0
-        if macd_df is not None and not macd_df.empty:
-            hist_cols = [c for c in macd_df.columns if 'MACDh' in c]
-            macd_hist = float(macd_df[hist_cols[0]].iloc[-1]) if hist_cols else float(macd_df.iloc[-1,1])
+# ──────────────────────────────────────────────────────────────
+# 5) STREAMLIT UI (Koodkaagii Hore)
+# ──────────────────────────────────────────────────────────────
 
-        # Bollinger Bands
-        bb = ta.bbands(close, length=20, std=2)
-        bb_low_val = bb_up_val = price
-        if bb is not None and not bb.empty:
-            bbl = [c for c in bb.columns if 'BBL' in c]
-            bbu = [c for c in bb.columns if 'BBU' in c]
-            if bbl: bb_low_val = float(bb[bbl[0]].iloc[-1])
-            if bbu: bb_up_val  = float(bb[bbu[0]].iloc[-1])
+st.title("🔬 PROV MAHAD AUTO AI")
+st.caption("Auto-Pilot & Advanced Features (Original Engine)")
 
-        # Stochastic
-        stoch_df = ta.stoch(high, low, close, k=14, d=3)
-        stoch = 50.0
-        if stoch_df is not None and not stoch_df.empty:
-            k_cols = [c for c in stoch_df.columns if 'STOCHk' in c]
-            stoch = float(stoch_df[k_cols[0]].iloc[-1]) if k_cols else float(stoch_df.iloc[-1,0])
+with st.sidebar:
+    st.header("⚙️ Doorashada")
+    pair_name = st.selectbox("1. Dooro Lacagta (Pair)", list(PAIRS.keys()))
+    interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["3m", "5m", "15m", "1h"], index=0)
+    
+    st.write("---")
+    st.subheader("🛠️ Advanced Settings")
+    predict_horizon = st.slider("Predict Horizon (N)", min_value=1, max_value=5, value=1, step=1, help="Kandallada xiga ee la saadaalinayo.")
+    test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5, help="Boqolleyda loo qoondeeyay tijaabada.") / 100.0
+    
+    st.write("---")
+    train_btn = st.button("🚀 GET SIGNAL & BACKTEST")
+    
+    st.write("---")
+    st.subheader("💡 Digniin Muhiim Ah")
+    st.info("""
+    * **Demo-Test**: Ku tijaabi ugu yaraan 50-100 trades oo demo ah.
+    * **Market Regime**: Suuqu isbeddel joogto ah ayuu leeyahay.
+    * **Maareynta Khatarta**: Ha gelin lacag aadan awoodin inaad lumiso.
+    """)
 
-        # Parabolic SAR
-        psar_rising = True
-        psar_df = ta.psar(high, low, close)
-        if psar_df is not None and not psar_df.empty:
-            long_cols = [c for c in psar_df.columns if 'PSARl' in c]
-            if long_cols:
-                psar_rising = not pd.isna(psar_df[long_cols[0]].iloc[-1])
+if train_btn:
+    with st.spinner("Xogta suuqa ayaa la falanqaynayaa..."):
+        try:
+            raw = fetch_data(PAIRS[pair_name], interval)
+        except Exception as e:
+            st.error(f"Cilad ayaa dhacday: {e}")
+            st.stop()
 
-        # ADX
-        adx = 20.0
-        adx_df = ta.adx(high, low, close, length=14)
-        if adx_df is not None and not adx_df.empty:
-            adx_cols = [c for c in adx_df.columns if 'ADX' in c and 'DM' not in c]
-            adx = float(adx_df[adx_cols[0]].iloc[-1]) if adx_cols else float(adx_df.iloc[-1,0])
-        adx = min(90.0, max(8.0, adx))
+    if raw.empty or len(raw) < 200:
+        st.error("Xog ku filan oo laga shaqeeyo hadda lama helin. Isku day Timeframe kale.")
+        st.stop()
 
-        if adx < 20:
-            return {
-                "price": price, "rsi": round(rsi,1),
-                "signal": "neutral", "direction": "neutral",
-                "confidence": 50, "adx": round(adx,1),
-                "buyInds": [], "sellInds": []
-            }
+    feats = build_features(raw)
+    labels, future_ret = build_labels(raw, horizon=predict_horizon) 
 
-        # EMAs
-        ema5  = float(ta.ema(close, length=5).iloc[-1])
-        ema10 = float(ta.ema(close, length=10).iloc[-1])
-        ema20 = float(ta.ema(close, length=20).iloc[-1])
+    model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(feats, labels, test_size=test_size_pct)
 
-        # ── SCORING ───────────────────────────────────────────────────────
-        buy_score = sell_score = 0.0
-        buy_inds  = []; sell_inds = []
+    # 1. LIVE SIGNAL BOX
+    st.subheader("🔮 LIVE SIGNAL (Kandalka xiga ee dhalanaya)")
+    latest_feats = feats.dropna().iloc[[-1]]
+    latest_price = raw["Close"].iloc[-1]
+    
+    if not latest_feats.empty:
+        latest_proba = model.predict_proba(latest_feats[feat_cols])[0, 1]
+        sig = "BUY (CALL)" if latest_proba >= 0.5 else "SELL (PUT)"
+        conf = latest_proba if sig == "BUY (CALL)" else 1 - latest_proba
+        
+        col1, col2, col3 = st.columns(3)
+        col1.metric("📊 SIGNAL-KA", sig)
+        col2.metric("🎯 CONFIDENCE", f"{conf*100:.1f}%")
+        col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
+        
+        auc = metrics["roc_auc"]
+        if pd.isna(auc) or auc < 0.55:
+            st.error(f"⚠️ **Digniin Halis ah:** Model-ka wuxuu muujinayaa wax-qabad aad u hooseeya (ROC-AUC: {auc:.3f}). Tani waxay u dhowdahay qori-tuur (coin-flip). Ha gelin trade-ka!")
+        elif conf < 0.70:
+            st.warning("⚠️ **Fariin:** Signal-kani kalsooni adag ma haysto (hoos u dhac ka yar 70%). Waxaa fiican in la sugo mid ka adag.")
+        else:
+            st.success(f"🚀 **Signal la falanqeeyay:** Kalsoonidu waa mid sareysa ({conf*100:.1f}%), laakiin mar walba isbarbardhig isbeddelka dhabta ah ee suuqa (ROC-AUC: {auc:.3f}).")
 
-        if   rsi < 30: buy_score  += 2;   buy_inds.append('RSI OB')
-        elif rsi < 45: buy_score  += 1;   buy_inds.append('RSI↑')
-        elif rsi > 70: sell_score += 2;   sell_inds.append('RSI OS')
-        elif rsi > 55: sell_score += 1;   sell_inds.append('RSI↓')
+    st.divider()
 
-        if macd_hist > 0: buy_score  += 1.5; buy_inds.append('MACD')
-        else:             sell_score += 1.5; sell_inds.append('MACD')
+    # 2. MODEL VALIDATION METRICS
+    st.subheader("📊 Tayada Model-ka ee Backtesting-ka")
+    col_acc, col_auc, col_prec = st.columns(3)
+    col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
+    col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}", help="Haddii ay ka hooseyso 0.50, model-ku ma laha wax ka duwan nasiibka caadiga ah.")
+    col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
 
-        if   price < bb_low_val: buy_score  += 2; buy_inds.append('BB↑')
-        elif price > bb_up_val:  sell_score += 2; sell_inds.append('BB↓')
+    st.divider()
 
-        if   stoch < 20: buy_score  += 1.5; buy_inds.append('STOCH')
-        elif stoch > 80: sell_score += 1.5; sell_inds.append('STOCH')
+    # 3. ACCURACY BY CONFIDENCE TABLE
+    st.subheader("🎯 Jadwalka Saxnaanta (Accuracy Table)")
+    thresh_df = accuracy_by_confidence(y_test.reset_index(drop=True), proba_test, [0.5, 0.6, 0.7, 0.8])
+    if not thresh_df.empty:
+        st.dataframe(thresh_df, use_container_width=True, hide_index=True)
+    else:
+        st.write("Xog ku filan jadwalka lama hayo hadda.")
 
-        if psar_rising: buy_score  += 1.5; buy_inds.append('PSAR')
-        else:           sell_score += 1.5; sell_inds.append('PSAR')
-
-        if   ema5 > ema10 > ema20: buy_score  += 2; buy_inds.append('EMA↑')
-        elif ema5 < ema10 < ema20: sell_score += 2; sell_inds.append('EMA↓')
-
-        trend_strength = 1.3 if adx > 25 else 1.1
-        buy_score  *= trend_strength
-        sell_score *= trend_strength
-
-        total = buy_score + sell_score
-        raw_conf = round((max(buy_score, sell_score) / total * 100 * 0.6) + 40) if total > 0 else 50
-        conf_cap = 70 if adx < 25 else (85 if adx < 35 else 95)
-        capped_conf = min(conf_cap, max(50, raw_conf))
-
-        diff = buy_score - sell_score
-        if   diff >  3: signal_type, direction = 'strong-buy',  'buy'
-        elif diff >  1: signal_type, direction = 'buy',         'buy'
-        elif diff < -3: signal_type, direction = 'strong-sell', 'sell'
-        elif diff < -1: signal_type, direction = 'sell',        'sell'
-        else:           signal_type, direction = 'neutral',     'neutral'
-
-        return {
-            "price": price, "rsi": round(rsi,1),
-            "signal": signal_type, "direction": direction,
-            "confidence": capped_conf, "adx": round(adx,1),
-            "buyInds": buy_inds, "sellInds": sell_inds
-        }
-    except:
-        return None
-
-# ── SCAN ───────────────────────────────────────────────────────────────────
-signals_data = []; buys_count = sells_count = 0; scan_time = ""
-
-if st.button("⚡ SCAN ALL PAIRS", use_container_width=True):
-    with st.spinner("Scanning 15 pairs..."):
-        for pair in PAIRS:
-            ohlc = get_ohlc(pair, st.session_state.tf_state)
-            if not ohlc: continue
-            a = analyze_signal(ohlc)
-            if not a: continue
-            if a["confidence"] >= st.session_state.conf_state:
-                a["pair"] = f"{pair[:3]}/{pair[3:]}"
-                signals_data.append(a)
-                if a["direction"] == "buy":  buys_count  += 1
-                if a["direction"] == "sell": sells_count += 1
-    signals_data.sort(key=lambda x: x["confidence"], reverse=True)
-    scan_time = datetime.now().strftime('%H:%M:%S')
-
-# ── RENDER ─────────────────────────────────────────────────────────────────
-tf_label = TF_OPTIONS[st.session_state.tf_state]
-expiry   = EXPIRY_MAP[st.session_state.tf_state]
-
-if not signals_data:
-    html_cards = f'<div class="empty"><div class="empty-icon">📡</div><div class="empty-text">Press <b>⚡ SCAN ALL PAIRS</b> to fetch live signals.<br>Timeframe: {tf_label} | Filter: {st.session_state.conf_state}%+</div></div>'
 else:
-    html_cards = ""
-    for s in signals_data:
-        label      = s["signal"].replace('-',' ').upper()
-        conf_color = '#00e676' if s["confidence"]>=80 else ('#ffa726' if s["confidence"]>=65 else '#8899aa')
-        btags = "".join([f'<span class="ind-tag ind-buy">{i}</span>'  for i in s["buyInds"]])
-        stags = "".join([f'<span class="ind-tag ind-sell">{i}</span>' for i in s["sellInds"]])
-        html_cards += f"""
-        <div class="signal-card {s['signal']}">
-          <div class="card-top"><div class="pair-name">{s['pair']}</div><div class="signal-badge badge-{s['signal']}">{label}</div></div>
-          <div class="card-mid">
-            <div class="info-chip">Price <span>{s['price']:.5f}</span></div>
-            <div class="info-chip">RSI <span>{s['rsi']}</span></div>
-            <div class="info-chip">ADX <span>{s['adx']}</span></div>
-            <div class="info-chip">Expiry <span>{expiry}</span></div>
-          </div>
-          <div class="conf-row">
-            <div class="conf-label">Confidence</div>
-            <div class="conf-bar-bg"><div class="conf-bar-fill" style="width:{s['confidence']}%;background:{conf_color};"></div></div>
-            <div class="conf-val">{s['confidence']}%</div>
-          </div>
-          <div class="indicators-row">{btags}{stags}</div>
-        </div>"""
-
-last_line = f'<div class="last-update">Last scan: {scan_time} — TF: {tf_label} — Expiry: {expiry}</div>' if scan_time else ''
-
-st.components.v1.html(f"""<!DOCTYPE html><html><head>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@700&family=Inter:wght@400;600&display=swap');
-:root{{--bg:#080c10;--card:#111820;--border:#1e2d3d;--surface:#0d1117;--accent:#00d4ff;--buy:#00e676;--buy-dim:#00e67620;--sell:#ff3d57;--sell-dim:#ff3d5720;--neutral:#ffa726;--neutral-dim:#ffa72620;--text:#e0eaf5;--text-dim:#8899aa;--strong:#ffffff;}}
-*{{margin:0;padding:0;box-sizing:border-box;}}
-body{{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;padding:0 4px;}}
-.header{{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding:12px 0;margin-bottom:14px;}}
-.logo{{font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:700;letter-spacing:2px;background:linear-gradient(90deg,var(--accent),#7b61ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}}
-.dot-row{{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;}}
-.dot{{width:8px;height:8px;border-radius:50%;background:var(--buy);box-shadow:0 0 8px var(--buy);}}
-.stats-row{{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}}
-.stat-box{{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;}}
-.stat-val{{font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;}}
-.stat-lbl{{font-size:10px;color:var(--text-dim);text-transform:uppercase;}}
-.sec-title{{font-size:11px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;}}
-.signal-card{{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;position:relative;overflow:hidden;}}
-.signal-card::before{{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;}}
-.signal-card.buy::before,.signal-card.strong-buy::before{{background:var(--buy);}}
-.signal-card.sell::before,.signal-card.strong-sell::before{{background:var(--sell);}}
-.signal-card.neutral::before{{background:var(--neutral);}}
-.card-top{{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}}
-.pair-name{{font-family:'Rajdhani',sans-serif;font-size:18px;font-weight:700;color:var(--strong);}}
-.signal-badge{{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;}}
-.badge-strong-buy{{background:var(--buy-dim);color:var(--buy);border:1px solid var(--buy);}}
-.badge-buy{{background:var(--buy-dim);color:var(--buy);border:1px solid #00e67650;}}
-.badge-strong-sell{{background:var(--sell-dim);color:var(--sell);border:1px solid var(--sell);}}
-.badge-sell{{background:var(--sell-dim);color:var(--sell);border:1px solid #ff3d5750;}}
-.badge-neutral{{background:var(--neutral-dim);color:var(--neutral);border:1px solid #ffa72650;}}
-.card-mid{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}}
-.info-chip{{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:11px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;}}
-.info-chip span{{color:var(--text);}}
-.conf-row{{display:flex;align-items:center;gap:8px;}}
-.conf-label{{font-size:10px;color:var(--text-dim);width:70px;}}
-.conf-bar-bg{{flex:1;height:5px;background:var(--border);border-radius:5px;overflow:hidden;}}
-.conf-bar-fill{{height:100%;border-radius:5px;}}
-.conf-val{{font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--strong);width:35px;text-align:right;}}
-.indicators-row{{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}}
-.ind-tag{{font-size:9px;padding:2px 6px;border-radius:4px;font-family:'Share Tech Mono',monospace;}}
-.ind-buy{{background:#00e67615;color:#00e676;}}
-.ind-sell{{background:#ff3d5715;color:#ff3d57;}}
-.empty{{text-align:center;padding:40px 20px;color:var(--text-dim);}}
-.empty-icon{{font-size:36px;margin-bottom:10px;}}
-.empty-text{{font-size:13px;line-height:1.7;}}
-.last-update{{text-align:center;font-size:10px;color:var(--text-dim);font-family:'Share Tech Mono',monospace;margin-top:12px;padding-bottom:20px;}}
-</style></head><body>
-<div class="header"><div class="logo">MAHAD SIGNALS</div><div class="dot-row"><div class="dot"></div><span>LIVE</span></div></div>
-<div class="stats-row">
-  <div class="stat-box"><div class="stat-val" style="color:var(--buy);">{buys_count}</div><div class="stat-lbl">BUY</div></div>
-  <div class="stat-box"><div class="stat-val" style="color:var(--sell);">{sells_count}</div><div class="stat-lbl">SELL</div></div>
-  <div class="stat-box"><div class="stat-val">{len(signals_data)}</div><div class="stat-lbl">SIGNALS</div></div>
-</div>
-<div class="sec-title">SIGNALS</div>
-{html_cards}
-{last_line}
-</body></html>""", height=900, scrolling=True)
+    st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET SIGNAL & BACKTEST'.")
