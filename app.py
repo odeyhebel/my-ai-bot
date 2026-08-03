@@ -9,7 +9,7 @@ import streamlit as st
 st.set_page_config(page_title="PROV MAHAD - Auto ML", layout="wide", initial_sidebar_state="collapsed")
 
 # ──────────────────────────────────────────────────────────────
-# 1) INDICATOR CALCULATIONS (Koodkaagii Hore)
+# 1) INDICATOR CALCULATIONS
 # ──────────────────────────────────────────────────────────────
 
 def calc_rsi(close, period=14):
@@ -57,6 +57,7 @@ def calc_adx(high, low, close, period=14):
     plus_dm[plus_dm < 0] = 0
     minus_dm[minus_dm < 0] = 0
 
+    # Wilder's Formula DM-Correction: kaliya DM-ka ugu weyn ayaa la haystaa
     plus_dm[(plus_dm - minus_dm) < 0] = 0
     minus_dm[(minus_dm - plus_dm) < 0] = 0
 
@@ -73,7 +74,7 @@ def calc_adx(high, low, close, period=14):
     return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
 
 # ──────────────────────────────────────────────────────────────
-# 2) DATA FETCH (Koodkaagii Hore)
+# 2) DATA FETCH
 # ──────────────────────────────────────────────────────────────
 
 PAIRS = {
@@ -134,13 +135,13 @@ def fetch_data(ticker, interval):
     else:
         period = INTERVAL_PERIOD_MAP.get(interval, "60d")
         df = _download_raw(ticker, interval, period)
-        
+
     if len(df) > 2:
-        df = df.iloc[:-1]
+        df = df.iloc[:-1]  # Tuur kandalka aan xirmin
     return df
 
 # ──────────────────────────────────────────────────────────────
-# 3) FEATURE + LABEL BUILDING (Koodkaagii Hore)
+# 3) FEATURE + LABEL BUILDING
 # ──────────────────────────────────────────────────────────────
 
 def build_features(df):
@@ -167,7 +168,7 @@ def build_labels(df, horizon=1):
     return label, future_return
 
 # ──────────────────────────────────────────────────────────────
-# 4) TRAIN + BACKTEST (Precision Bug Fixed)
+# 4) TRAIN + BACKTEST (class_weight balanced + dynamic threshold)
 # ──────────────────────────────────────────────────────────────
 
 def train_and_evaluate(features, labels, test_size=0.25):
@@ -185,27 +186,29 @@ def train_and_evaluate(features, labels, test_size=0.25):
     X_train, y_train = train[feat_cols], train["label"]
     X_test, y_test = test[feat_cols], test["label"]
 
-    # Model-kaagii Hore oo aan waxba laga baddelin
+    # FIX 1: class_weight="balanced" - si model-ku labadaba BUY iyo SELL u tixgeliyo,
+    # ma aha inuu ku dhuunto hal-dhinac (majority class collapse)
     model = RandomForestClassifier(
         n_estimators=150, max_depth=5, min_samples_leaf=25,
+        class_weight="balanced",
         random_state=42, n_jobs=1
     )
     model.fit(X_train, y_train)
 
-    proba_test = model.predict_proba(X_test)[:, 1]
-    pred_test = (proba_test >= 0.5).astype(int)
+    # FIX 2: Dynamic threshold (median of train probabilities) halkii 0.5 fixed,
+    # si loo hubiyo in BUY iyo SELL labaduba si dhab ah loo isticmaalo
+    train_proba = model.predict_proba(X_train)[:, 1]
+    opt_threshold = float(np.median(train_proba))
 
-    # SAXIDA PRECISION-KA: Zero division badbaado leh
-    prec = precision_score(y_test, pred_test, zero_division=0)
-    
-    # Haddii pred_test aanuu lahayn BUY (1), Precision-ka waxaa loo xisbinayaa saxaanaanta SELL-ka
-    if pred_test.sum() == 0:
-        prec = (y_test == 0).mean()
+    proba_test = model.predict_proba(X_test)[:, 1]
+    pred_test = (proba_test >= opt_threshold).astype(int)
 
     metrics = {
         "accuracy": accuracy_score(y_test, pred_test),
-        "precision": prec,
+        "precision": precision_score(y_test, pred_test, zero_division=0),
         "recall": recall_score(y_test, pred_test, zero_division=0),
+        "threshold": opt_threshold,
+        "buy_rate": float(pred_test.mean()),
     }
     try:
         metrics["roc_auc"] = roc_auc_score(y_test, proba_test)
@@ -234,25 +237,27 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
     return pd.DataFrame(rows)
 
 # ──────────────────────────────────────────────────────────────
-# 5) STREAMLIT UI (Koodkaagii Hore)
+# 5) STREAMLIT UI
 # ──────────────────────────────────────────────────────────────
 
 st.title("🔬 PROV MAHAD AUTO AI")
-st.caption("Auto-Pilot & Advanced Features (Original Engine)")
+st.caption("Auto-Pilot & Balanced ML Engine (ADX + Precision bug labadaba la saxay)")
 
 with st.sidebar:
     st.header("⚙️ Doorashada")
     pair_name = st.selectbox("1. Dooro Lacagta (Pair)", list(PAIRS.keys()))
-    interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["3m", "5m", "15m", "1h"], index=0)
-    
+    interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["1m", "2m", "3m", "5m", "15m", "1h", "1d"], index=3)
+
     st.write("---")
     st.subheader("🛠️ Advanced Settings")
-    predict_horizon = st.slider("Predict Horizon (N)", min_value=1, max_value=5, value=1, step=1, help="Kandallada xiga ee la saadaalinayo.")
-    test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5, help="Boqolleyda loo qoondeeyay tijaabada.") / 100.0
-    
+    predict_horizon = st.slider("Predict Horizon (N)", min_value=1, max_value=10, value=1, step=1,
+                                 help="Kandallada xiga ee la saadaalinayo.")
+    test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5,
+                               help="Boqolleyda loo qoondeeyay tijaabada.") / 100.0
+
     st.write("---")
     train_btn = st.button("🚀 GET SIGNAL & BACKTEST")
-    
+
     st.write("---")
     st.subheader("💡 Digniin Muhiim Ah")
     st.info("""
@@ -274,25 +279,28 @@ if train_btn:
         st.stop()
 
     feats = build_features(raw)
-    labels, future_ret = build_labels(raw, horizon=predict_horizon) 
+    labels, future_ret = build_labels(raw, horizon=predict_horizon)
 
-    model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(feats, labels, test_size=test_size_pct)
+    model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(
+        feats, labels, test_size=test_size_pct
+    )
 
     # 1. LIVE SIGNAL BOX
     st.subheader("🔮 LIVE SIGNAL (Kandalka xiga ee dhalanaya)")
     latest_feats = feats.dropna().iloc[[-1]]
     latest_price = raw["Close"].iloc[-1]
-    
+
     if not latest_feats.empty:
         latest_proba = model.predict_proba(latest_feats[feat_cols])[0, 1]
-        sig = "BUY (CALL)" if latest_proba >= 0.5 else "SELL (PUT)"
-        conf = latest_proba if sig == "BUY (CALL)" else 1 - latest_proba
-        
+        dyn_thresh = metrics["threshold"]
+        sig = "BUY (CALL)" if latest_proba >= dyn_thresh else "SELL (PUT)"
+        conf = latest_proba if sig == "BUY (CALL)" else 1.0 - latest_proba
+
         col1, col2, col3 = st.columns(3)
         col1.metric("📊 SIGNAL-KA", sig)
         col2.metric("🎯 CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
-        
+
         auc = metrics["roc_auc"]
         if pd.isna(auc) or auc < 0.55:
             st.error(f"⚠️ **Digniin Halis ah:** Model-ka wuxuu muujinayaa wax-qabad aad u hooseeya (ROC-AUC: {auc:.3f}). Tani waxay u dhowdahay qori-tuur (coin-flip). Ha gelin trade-ka!")
@@ -307,8 +315,15 @@ if train_btn:
     st.subheader("📊 Tayada Model-ka ee Backtesting-ka")
     col_acc, col_auc, col_prec = st.columns(3)
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
-    col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}", help="Haddii ay ka hooseyso 0.50, model-ku ma laha wax ka duwan nasiibka caadiga ah.")
-    col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
+    col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}",
+                   help="Haddii ay ka hooseyso 0.50, model-ku ma laha wax ka duwan nasiibka caadiga ah.")
+    col_prec.metric("📈 Precision (BUY)", f"{metrics['precision']*100:.1f}%")
+
+    st.caption(
+        f"Model-ku wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah "
+        "(haddii ay aad ugu dhow tahay 0% ama 100%, macnaheedu waa model-ku hal-dhinac kaliya ayuu ku dhuuntay - "
+        "ha isticmaalin natiijadaas)."
+    )
 
     st.divider()
 
