@@ -1,6 +1,5 @@
 streamlit
-pandas
-pandas_ta
 yfinance
-requests
-google-generativeai
+pandas
+numpy
+scikit-learn
