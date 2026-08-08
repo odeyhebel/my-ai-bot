@@ -32,39 +32,28 @@ def fetch_news_calendar():
 def check_pair_news(news_df, pair_name):
     if news_df.empty:
         return [], False
-
     currencies = pair_name.split("/")
     now = pd.Timestamp.now(tz='UTC')
-
     relevant = news_df[
-        (news_df['country'].isin(currencies)) & 
+        (news_df['country'].isin(currencies)) &
         (news_df['impact'].isin(['High', 'Medium']))
     ].copy()
-
     if relevant.empty:
         return [], False
-
     high_risk = False
     upcoming_events = []
-
     for _, row in relevant.iterrows():
         if pd.isna(row['datetime']):
             continue
-            
         event_time = pd.to_datetime(row['datetime'], utc=True)
         diff_minutes = (event_time - now).total_seconds() / 60.0
-
         if -30 <= diff_minutes <= 60:
             if row['impact'] == 'High':
                 high_risk = True
             upcoming_events.append({
-                'title': row['title'],
-                'country': row['country'],
-                'impact': row['impact'],
-                'time': event_time.strftime('%H:%M UTC'),
-                'diff': int(diff_minutes)
+                'title': row['title'], 'country': row['country'], 'impact': row['impact'],
+                'time': event_time.strftime('%H:%M UTC'), 'diff': int(diff_minutes)
             })
-
     return upcoming_events, high_risk
 
 # ──────────────────────────────────────────────────────────────
@@ -108,15 +97,12 @@ def calc_adx(high, low, close, period=14):
     minus_dm = -low.diff()
     plus_dm[plus_dm < 0] = 0
     minus_dm[minus_dm < 0] = 0
-
     plus_dm[(plus_dm - minus_dm) < 0] = 0
     minus_dm[(minus_dm - plus_dm) < 0] = 0
-
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
     tr3 = (low - close.shift()).abs()
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
     atr = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     plus_di = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan))
     minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan))
@@ -129,36 +115,16 @@ def calc_adx(high, low, close, period=14):
 # ──────────────────────────────────────────────────────────────
 
 PAIRS = {
-    "EUR/USD": "EURUSD=X",
-    "EUR/JPY": "EURJPY=X",
-    "EUR/CHF": "EURCHF=X",
-    "EUR/CAD": "EURCAD=X",
-    "EUR/AUD": "EURAUD=X",
-    "AUD/USD": "AUDUSD=X",
-    "AUD/JPY": "AUDJPY=X",
-    "AUD/CHF": "AUDCHF=X",
-    "AUD/CAD": "AUDCAD=X",
-    "CAD/CHF": "CADCHF=X",
-    "CAD/JPY": "CADJPY=X",
-    "CHF/JPY": "CHFJPY=X",
-    "USD/CAD": "USDCAD=X",
-    "USD/CHF": "USDCHF=X",
-    "USD/JPY": "USDJPY=X",
-    "GBP/USD": "GBPUSD=X",
-    "GBP/AUD": "GBPAUD=X"
+    "EUR/USD": "EURUSD=X", "EUR/JPY": "EURJPY=X", "EUR/CHF": "EURCHF=X",
+    "EUR/CAD": "EURCAD=X", "EUR/AUD": "EURAUD=X", "AUD/USD": "AUDUSD=X",
+    "AUD/JPY": "AUDJPY=X", "AUD/CHF": "AUDCHF=X", "AUD/CAD": "AUDCAD=X",
+    "CAD/CHF": "CADCHF=X", "CAD/JPY": "CADJPY=X", "CHF/JPY": "CHFJPY=X",
+    "USD/CAD": "USDCAD=X", "USD/CHF": "USDCHF=X", "USD/JPY": "USDJPY=X",
+    "GBP/USD": "GBPUSD=X", "GBP/AUD": "GBPAUD=X"
 }
 
-INTERVAL_PERIOD_MAP = {
-    "1m":  "7d",
-    "3m":  "7d",
-    "5m":  "60d",
-    "15m": "60d",
-    "1h":  "730d",
-}
-
-RESAMPLE_INTERVALS = {
-    "3m": ("1m", "3min"),
-}
+INTERVAL_PERIOD_MAP = {"1m": "7d", "3m": "7d", "5m": "60d", "15m": "60d", "1h": "730d"}
+RESAMPLE_INTERVALS = {"3m": ("1m", "3min")}
 
 def _download_raw(ticker, interval, period):
     import yfinance as yf
@@ -184,7 +150,6 @@ def fetch_data(ticker, interval):
     else:
         period = INTERVAL_PERIOD_MAP.get(interval, "60d")
         df = _download_raw(ticker, interval, period)
-        
     if len(df) > 2:
         df = df.iloc[:-1]
     return df
@@ -207,7 +172,6 @@ def get_macro_trend(ticker):
 def build_features(df):
     out = pd.DataFrame(index=df.index)
     close, high, low, open_p = df["Close"], df["High"], df["Low"], df["Open"]
-
     out["rsi"] = calc_rsi(close, 14)
     _, _, macd_hist = calc_macd(close)
     out["macd_hist"] = macd_hist
@@ -216,11 +180,9 @@ def build_features(df):
     adx, plus_di, minus_di = calc_adx(high, low, close, 14)
     out["adx"] = adx
     out["di_diff"] = plus_di - minus_di
-    
     out["candle_body"] = (close - open_p) / (high - low).replace(0, np.nan)
     out["upper_wick"] = (high - pd.concat([open_p, close], axis=1).max(axis=1)) / (high - low).replace(0, np.nan)
     out["lower_wick"] = (pd.concat([open_p, close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
-    
     out["return_1"] = close.pct_change(1)
     out["return_3"] = close.pct_change(3)
     return out
@@ -232,12 +194,13 @@ def build_labels(df, horizon=1):
     return label, future_return
 
 # ──────────────────────────────────────────────────────────────
-# 5) 3-AI ENSEMBLE VOTING ENGINE
+# 5) 3-AI ENSEMBLE VOTING ENGINE (class-imbalance FIXED)
 # ──────────────────────────────────────────────────────────────
 
 def train_and_evaluate(features, labels, test_size=0.25):
     from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier, VotingClassifier
     from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
+    from sklearn.utils.class_weight import compute_sample_weight
 
     data = features.copy()
     data["label"] = labels
@@ -259,8 +222,13 @@ def train_and_evaluate(features, labels, test_size=0.25):
         estimators=[('rf', model1), ('et', model2), ('gb', model3)],
         voting='soft'
     )
-    
-    model.fit(X_train, y_train)
+
+    # FIX: GradientBoostingClassifier ma taageerto class_weight (sklearn ma leh parameter-kaas),
+    # sidaa darteed waxaan isticmaalnaa sample_weight="balanced" - saddexdaba model way taageeraan.
+    # Tani waa isla dhibaatadii "class imbalance" ee hore la saxay (model-ku hal dhinac kaliya
+    # sheegayo, BUY-gu marnaba aan la sheegin) - haddii aan la sameyn, waa dib u soo noqon lahayd.
+    sample_weight = compute_sample_weight("balanced", y_train)
+    model.fit(X_train, y_train, sample_weight=sample_weight)
 
     proba_test = model.predict_proba(X_test)[:, 1]
     pred_test = (proba_test >= 0.5).astype(int)
@@ -269,6 +237,7 @@ def train_and_evaluate(features, labels, test_size=0.25):
         "accuracy": accuracy_score(y_test, pred_test),
         "precision": precision_score(y_test, pred_test, zero_division=0),
         "recall": recall_score(y_test, pred_test, zero_division=0),
+        "buy_rate": float(pred_test.mean()),
     }
     try:
         metrics["roc_auc"] = roc_auc_score(y_test, proba_test)
@@ -289,11 +258,7 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
         pred = np.where(buy_mask[mask], 1, 0)
         actual = y_test[mask].values
         acc = (pred == actual).mean()
-        rows.append({
-            "Confidence Level": f"{int(t*100)}%+",
-            "Filtered Trades": int(n),
-            "Accuracy Natiijo": f"{acc * 100:.1f}%"
-        })
+        rows.append({"Confidence Level": f"{int(t*100)}%+", "Filtered Trades": int(n), "Accuracy Natiijo": f"{acc * 100:.1f}%"})
     return pd.DataFrame(rows)
 
 # ──────────────────────────────────────────────────────────────
@@ -309,15 +274,12 @@ with st.sidebar:
     st.header("⚙️ Nidaamka Isku-dubbaridda")
     pair_name = st.selectbox("1. Dooro Lacagta (Pair)", list(PAIRS.keys()))
     interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["3m", "5m", "15m", "1h"], index=0)
-    
     st.write("---")
     st.subheader("🛠️ Advanced Settings")
     predict_horizon = st.slider("Predict Horizon (N Candles)", min_value=1, max_value=5, value=1, step=1)
     test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5) / 100.0
-    
     st.write("---")
     train_btn = st.button("🚀 GET 3-AI ENSEMBLE SIGNAL")
-    
     st.write("---")
     st.info("""
     * **3-AI Voting**: Sadex Algorithms ayaa isla ogolaada signal-ka.
@@ -348,19 +310,19 @@ if train_btn:
         st.stop()
 
     feats = build_features(raw)
-    labels, future_ret = build_labels(raw, horizon=predict_horizon) 
+    labels, future_ret = build_labels(raw, horizon=predict_horizon)
 
     model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(feats, labels, test_size=test_size_pct)
 
     st.subheader("🔮 3-AI ENSEMBLE LIVE SIGNAL")
     latest_feats = feats.dropna().iloc[[-1]]
     latest_price = raw["Close"].iloc[-1]
-    
+
     if not latest_feats.empty:
         latest_proba = model.predict_proba(latest_feats[feat_cols])[0, 1]
         sig = "BUY (CALL)" if latest_proba >= 0.5 else "SELL (PUT)"
         conf = latest_proba if sig == "BUY (CALL)" else 1 - latest_proba
-        
+
         mtf_conflict = False
         if "BULLISH" in macro_trend and sig == "SELL (PUT)":
             mtf_conflict = True
@@ -371,7 +333,7 @@ if train_btn:
         col1.metric("📊 SIGNAL-KA", sig)
         col2.metric("🎯 3-AI CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
-        
+
         auc = metrics["roc_auc"]
         if is_high_risk:
             st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar ah, ka fogow trade-kan!")
@@ -391,6 +353,7 @@ if train_btn:
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
     col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
     col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
+    st.caption(f"3-AI-gu wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah (u dhow 0% ama 100% = calaamad qalad).")
 
     st.divider()
 
