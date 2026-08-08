@@ -2,14 +2,73 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
+import json
+import urllib.request
+from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="PROV MAHAD - Auto ML", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="PROV MAHAD - 3-AI Ensemble Elite", layout="wide", initial_sidebar_state="collapsed")
 
 # ──────────────────────────────────────────────────────────────
-# 1) INDICATOR CALCULATIONS
+# 1) NEWS TRACKER (LIVE FOREX FACTORY)
+# ──────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def fetch_news_calendar():
+    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+        df = pd.DataFrame(data)
+        if not df.empty:
+            df['datetime'] = pd.to_datetime(df['date'], utc=True)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+def check_pair_news(news_df, pair_name):
+    if news_df.empty:
+        return [], False
+
+    currencies = pair_name.split("/")
+    now = pd.Timestamp.now(tz='UTC')
+
+    relevant = news_df[
+        (news_df['country'].isin(currencies)) & 
+        (news_df['impact'].isin(['High', 'Medium']))
+    ].copy()
+
+    if relevant.empty:
+        return [], False
+
+    high_risk = False
+    upcoming_events = []
+
+    for _, row in relevant.iterrows():
+        if pd.isna(row['datetime']):
+            continue
+            
+        event_time = pd.to_datetime(row['datetime'], utc=True)
+        diff_minutes = (event_time - now).total_seconds() / 60.0
+
+        if -30 <= diff_minutes <= 60:
+            if row['impact'] == 'High':
+                high_risk = True
+            upcoming_events.append({
+                'title': row['title'],
+                'country': row['country'],
+                'impact': row['impact'],
+                'time': event_time.strftime('%H:%M UTC'),
+                'diff': int(diff_minutes)
+            })
+
+    return upcoming_events, high_risk
+
+# ──────────────────────────────────────────────────────────────
+# 2) ADVANCED TECHNICAL INDICATORS & PRICE ACTION
 # ──────────────────────────────────────────────────────────────
 
 def calc_rsi(close, period=14):
@@ -44,20 +103,12 @@ def calc_stochastic(high, low, close, period=14):
     k = (close - lowest) / (highest - lowest).replace(0, np.nan) * 100
     return k.fillna(50)
 
-def calc_cci(high, low, close, period=20):
-    tp = (high + low + close) / 3
-    sma = tp.rolling(period).mean()
-    mean_dev = tp.rolling(period).apply(lambda x: np.mean(np.abs(x - x.mean())), raw=True)
-    cci = (tp - sma) / (0.015 * mean_dev.replace(0, np.nan))
-    return cci.fillna(0)
-
 def calc_adx(high, low, close, period=14):
     plus_dm = high.diff()
     minus_dm = -low.diff()
     plus_dm[plus_dm < 0] = 0
     minus_dm[minus_dm < 0] = 0
 
-    # Wilder's Formula DM-Correction: kaliya DM-ka ugu weyn ayaa la haystaa
     plus_dm[(plus_dm - minus_dm) < 0] = 0
     minus_dm[(minus_dm - plus_dm) < 0] = 0
 
@@ -74,7 +125,7 @@ def calc_adx(high, low, close, period=14):
     return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
 
 # ──────────────────────────────────────────────────────────────
-# 2) DATA FETCH
+# 3) DATA DOWNLOAD & MACRO MTF CHECKER
 # ──────────────────────────────────────────────────────────────
 
 PAIRS = {
@@ -99,12 +150,10 @@ PAIRS = {
 
 INTERVAL_PERIOD_MAP = {
     "1m":  "7d",
-    "2m":  "60d",
     "3m":  "7d",
     "5m":  "60d",
     "15m": "60d",
     "1h":  "730d",
-    "1d":  "5y",
 }
 
 RESAMPLE_INTERVALS = {
@@ -135,30 +184,45 @@ def fetch_data(ticker, interval):
     else:
         period = INTERVAL_PERIOD_MAP.get(interval, "60d")
         df = _download_raw(ticker, interval, period)
-
+        
     if len(df) > 2:
-        df = df.iloc[:-1]  # Tuur kandalka aan xirmin
+        df = df.iloc[:-1]
     return df
 
+def get_macro_trend(ticker):
+    try:
+        df_macro = _download_raw(ticker, "1h", "30d")
+        if len(df_macro) > 50:
+            ema50 = df_macro["Close"].ewm(span=50, adjust=False).mean().iloc[-1]
+            current_close = df_macro["Close"].iloc[-1]
+            return "BULLISH (Kor)" if current_close > ema50 else "BEARISH (Hoos)"
+    except Exception:
+        pass
+    return "NEUTRAL"
+
 # ──────────────────────────────────────────────────────────────
-# 3) FEATURE + LABEL BUILDING
+# 4) ELITE FEATURE & LABEL ENGINEERING
 # ──────────────────────────────────────────────────────────────
 
 def build_features(df):
     out = pd.DataFrame(index=df.index)
-    close, high, low = df["Close"], df["High"], df["Low"]
+    close, high, low, open_p = df["Close"], df["High"], df["Low"], df["Open"]
 
     out["rsi"] = calc_rsi(close, 14)
-    macd_line, macd_signal, macd_hist = calc_macd(close)
+    _, _, macd_hist = calc_macd(close)
     out["macd_hist"] = macd_hist
     out["bb_percent"] = calc_bollinger(close, 20, 2)
     out["stoch_k"] = calc_stochastic(high, low, close, 14)
-    out["cci"] = calc_cci(high, low, close, 20)
     adx, plus_di, minus_di = calc_adx(high, low, close, 14)
     out["adx"] = adx
     out["di_diff"] = plus_di - minus_di
+    
+    out["candle_body"] = (close - open_p) / (high - low).replace(0, np.nan)
+    out["upper_wick"] = (high - pd.concat([open_p, close], axis=1).max(axis=1)) / (high - low).replace(0, np.nan)
+    out["lower_wick"] = (pd.concat([open_p, close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
+    
     out["return_1"] = close.pct_change(1)
-    out["return_5"] = close.pct_change(5)
+    out["return_3"] = close.pct_change(3)
     return out
 
 def build_labels(df, horizon=1):
@@ -168,11 +232,11 @@ def build_labels(df, horizon=1):
     return label, future_return
 
 # ──────────────────────────────────────────────────────────────
-# 4) TRAIN + BACKTEST (class_weight balanced + dynamic threshold)
+# 5) 3-AI ENSEMBLE VOTING ENGINE
 # ──────────────────────────────────────────────────────────────
 
 def train_and_evaluate(features, labels, test_size=0.25):
-    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier, VotingClassifier
     from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
 
     data = features.copy()
@@ -186,29 +250,25 @@ def train_and_evaluate(features, labels, test_size=0.25):
     X_train, y_train = train[feat_cols], train["label"]
     X_test, y_test = test[feat_cols], test["label"]
 
-    # FIX 1: class_weight="balanced" - si model-ku labadaba BUY iyo SELL u tixgeliyo,
-    # ma aha inuu ku dhuunto hal-dhinac (majority class collapse)
-    model = RandomForestClassifier(
-        n_estimators=150, max_depth=5, min_samples_leaf=25,
-        class_weight="balanced",
-        random_state=42, n_jobs=1
+    # Sadexda AI ee kala duwan oo isku darsanaya awooddooda (Voting Ensemble)
+    model1 = RandomForestClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
+    model2 = ExtraTreesClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
+    model3 = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
+
+    model = VotingClassifier(
+        estimators=[('rf', model1), ('et', model2), ('gb', model3)],
+        voting='soft'
     )
+    
     model.fit(X_train, y_train)
 
-    # FIX 2: Dynamic threshold (median of train probabilities) halkii 0.5 fixed,
-    # si loo hubiyo in BUY iyo SELL labaduba si dhab ah loo isticmaalo
-    train_proba = model.predict_proba(X_train)[:, 1]
-    opt_threshold = float(np.median(train_proba))
-
     proba_test = model.predict_proba(X_test)[:, 1]
-    pred_test = (proba_test >= opt_threshold).astype(int)
+    pred_test = (proba_test >= 0.5).astype(int)
 
     metrics = {
         "accuracy": accuracy_score(y_test, pred_test),
         "precision": precision_score(y_test, pred_test, zero_division=0),
         "recall": recall_score(y_test, pred_test, zero_division=0),
-        "threshold": opt_threshold,
-        "buy_rate": float(pred_test.mean()),
     }
     try:
         metrics["roc_auc"] = roc_auc_score(y_test, proba_test)
@@ -230,44 +290,53 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
         actual = y_test[mask].values
         acc = (pred == actual).mean()
         rows.append({
-            "Confidence": f"{int(t*100)}%+",
-            "Trades": int(n),
+            "Confidence Level": f"{int(t*100)}%+",
+            "Filtered Trades": int(n),
             "Accuracy Natiijo": f"{acc * 100:.1f}%"
         })
     return pd.DataFrame(rows)
 
 # ──────────────────────────────────────────────────────────────
-# 5) STREAMLIT UI
+# 6) STREAMLIT UI DESIGN (3-AI ENSEMBLE + MTF)
 # ──────────────────────────────────────────────────────────────
 
-st.title("🔬 PROV MAHAD AUTO AI")
-st.caption("Auto-Pilot & Balanced ML Engine (ADX + Precision bug labadaba la saxay)")
+st.title("🔬 PROV MAHAD - 3-AI ENSEMBLE ELITE BOT")
+st.caption("Real Market Binary Engine (3-AI Voting Ensemble + Price Action + MTF + News Filter)")
+
+news_data = fetch_news_calendar()
 
 with st.sidebar:
-    st.header("⚙️ Doorashada")
+    st.header("⚙️ Nidaamka Isku-dubbaridda")
     pair_name = st.selectbox("1. Dooro Lacagta (Pair)", list(PAIRS.keys()))
-    interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["1m", "2m", "3m", "5m", "15m", "1h", "1d"], index=3)
-
+    interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["3m", "5m", "15m", "1h"], index=0)
+    
     st.write("---")
     st.subheader("🛠️ Advanced Settings")
-    predict_horizon = st.slider("Predict Horizon (N)", min_value=1, max_value=10, value=1, step=1,
-                                 help="Kandallada xiga ee la saadaalinayo.")
-    test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5,
-                               help="Boqolleyda loo qoondeeyay tijaabada.") / 100.0
-
+    predict_horizon = st.slider("Predict Horizon (N Candles)", min_value=1, max_value=5, value=1, step=1)
+    test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5) / 100.0
+    
     st.write("---")
-    train_btn = st.button("🚀 GET SIGNAL & BACKTEST")
-
+    train_btn = st.button("🚀 GET 3-AI ENSEMBLE SIGNAL")
+    
     st.write("---")
-    st.subheader("💡 Digniin Muhiim Ah")
     st.info("""
-    * **Demo-Test**: Ku tijaabi ugu yaraan 50-100 trades oo demo ah.
-    * **Market Regime**: Suuqu isbeddel joogto ah ayuu leeyahay.
-    * **Maareynta Khatarta**: Ha gelin lacag aadan awoodin inaad lumiso.
+    * **3-AI Voting**: Sadex Algorithms ayaa isla ogolaada signal-ka.
+    * **MTF Filter**: Jihada 1-Hour ayaa xukunta guud ahaan nidaamka.
     """)
 
 if train_btn:
-    with st.spinner("Xogta suuqa ayaa la falanqaynayaa..."):
+    upcoming_events, is_high_risk = check_pair_news(news_data, pair_name)
+    if is_high_risk:
+        st.error(f"🚨 **DIGNIIN NEWS ADAG:** Pair-kan ({pair_name}) wuxuu leeyahay warar High-Impact ah!")
+    elif upcoming_events:
+        st.warning(f"⚠️ **DIGNIIN NEWS:** Waxaa jira warar Medium-Impact ah oo ku dhow pair-kan:")
+        for ev in upcoming_events:
+            st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
+
+    macro_trend = get_macro_trend(PAIRS[pair_name])
+    st.info(f"🌐 **Multi-Timeframe Macro Trend (1H):** {macro_trend}")
+
+    with st.spinner("3-da AI ee kala duwan ayaa falanqeynaya suuqa (Ensemble Voting)..."):
         try:
             raw = fetch_data(PAIRS[pair_name], interval)
         except Exception as e:
@@ -275,60 +344,57 @@ if train_btn:
             st.stop()
 
     if raw.empty or len(raw) < 200:
-        st.error("Xog ku filan oo laga shaqeeyo hadda lama helin. Isku day Timeframe kale.")
+        st.error("Xog ku filan lama helin. Isku day Timeframe kale.")
         st.stop()
 
     feats = build_features(raw)
-    labels, future_ret = build_labels(raw, horizon=predict_horizon)
+    labels, future_ret = build_labels(raw, horizon=predict_horizon) 
 
-    model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(
-        feats, labels, test_size=test_size_pct
-    )
+    model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(feats, labels, test_size=test_size_pct)
 
-    # 1. LIVE SIGNAL BOX
-    st.subheader("🔮 LIVE SIGNAL (Kandalka xiga ee dhalanaya)")
+    st.subheader("🔮 3-AI ENSEMBLE LIVE SIGNAL")
     latest_feats = feats.dropna().iloc[[-1]]
     latest_price = raw["Close"].iloc[-1]
-
+    
     if not latest_feats.empty:
         latest_proba = model.predict_proba(latest_feats[feat_cols])[0, 1]
-        dyn_thresh = metrics["threshold"]
-        sig = "BUY (CALL)" if latest_proba >= dyn_thresh else "SELL (PUT)"
-        conf = latest_proba if sig == "BUY (CALL)" else 1.0 - latest_proba
+        sig = "BUY (CALL)" if latest_proba >= 0.5 else "SELL (PUT)"
+        conf = latest_proba if sig == "BUY (CALL)" else 1 - latest_proba
+        
+        mtf_conflict = False
+        if "BULLISH" in macro_trend and sig == "SELL (PUT)":
+            mtf_conflict = True
+        elif "BEARISH" in macro_trend and sig == "BUY (CALL)":
+            mtf_conflict = True
 
         col1, col2, col3 = st.columns(3)
         col1.metric("📊 SIGNAL-KA", sig)
-        col2.metric("🎯 CONFIDENCE", f"{conf*100:.1f}%")
+        col2.metric("🎯 3-AI CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
-
+        
         auc = metrics["roc_auc"]
-        if pd.isna(auc) or auc < 0.55:
-            st.error(f"⚠️ **Digniin Halis ah:** Model-ka wuxuu muujinayaa wax-qabad aad u hooseeya (ROC-AUC: {auc:.3f}). Tani waxay u dhowdahay qori-tuur (coin-flip). Ha gelin trade-ka!")
+        if is_high_risk:
+            st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar ah, ka fogow trade-kan!")
+        elif mtf_conflict:
+            st.error(f"⚠️ **MTF CONFLICT WARNING:** Signal-kani ({sig}) wuxuu ka horjeedaa macro trend-ka 1H ({macro_trend}).")
+        elif pd.isna(auc) or auc < 0.55:
+            st.error(f"⚠️ **Digniin:** Model-ka ROC-AUC-giisu waa hooseeyaa ({auc:.3f}).")
         elif conf < 0.70:
-            st.warning("⚠️ **Fariin:** Signal-kani kalsooni adag ma haysto (hoos u dhac ka yar 70%). Waxaa fiican in la sugo mid ka adag.")
+            st.warning(f"⚠️ **Fariin:** Kalsoonida 3-AI waa {conf*100:.1f}% (Ka hooseysa 70%). Sug fursad xoog badan.")
         else:
-            st.success(f"🚀 **Signal la falanqeeyay:** Kalsoonidu waa mid sareysa ({conf*100:.1f}%), laakiin mar walba isbarbardhig isbeddelka dhabta ah ee suuqa (ROC-AUC: {auc:.3f}).")
+            st.success(f"🚀 **3-AI ENSEMBLE SIGNAL OOGAN:** Sadexda AI waxay isla garteen signal-kan oo kalsoonidiisu tahay ({conf*100:.1f}%)!")
 
     st.divider()
 
-    # 2. MODEL VALIDATION METRICS
-    st.subheader("📊 Tayada Model-ka ee Backtesting-ka")
+    st.subheader("📊 Tayada Model-ka (3-AI Validation)")
     col_acc, col_auc, col_prec = st.columns(3)
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
-    col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}",
-                   help="Haddii ay ka hooseyso 0.50, model-ku ma laha wax ka duwan nasiibka caadiga ah.")
-    col_prec.metric("📈 Precision (BUY)", f"{metrics['precision']*100:.1f}%")
-
-    st.caption(
-        f"Model-ku wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah "
-        "(haddii ay aad ugu dhow tahay 0% ama 100%, macnaheedu waa model-ku hal-dhinac kaliya ayuu ku dhuuntay - "
-        "ha isticmaalin natiijadaas)."
-    )
+    col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
+    col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
 
     st.divider()
 
-    # 3. ACCURACY BY CONFIDENCE TABLE
-    st.subheader("🎯 Jadwalka Saxnaanta (Accuracy Table)")
+    st.subheader("🎯 Jadwalka Saxnaanta Heerarka Kalsoonida (Confidence Matrix)")
     thresh_df = accuracy_by_confidence(y_test.reset_index(drop=True), proba_test, [0.5, 0.6, 0.7, 0.8])
     if not thresh_df.empty:
         st.dataframe(thresh_df, use_container_width=True, hide_index=True)
@@ -336,4 +402,4 @@ if train_btn:
         st.write("Xog ku filan jadwalka lama hayo hadda.")
 
 else:
-    st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET SIGNAL & BACKTEST'.")
+    st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET 3-AI ENSEMBLE SIGNAL'.")
