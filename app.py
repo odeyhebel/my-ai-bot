@@ -31,15 +31,19 @@ def fetch_news_calendar():
 
 def check_pair_news(news_df, pair_name):
     if news_df.empty:
-        return [], False
-    currencies = pair_name.split("/")
+        return [], False, 0
+    currencies = [c.upper() for c in pair_name.split("/")]
     now = pd.Timestamp.now(tz='UTC')
+    # Case-insensitive matching - Forex Factory field capitalization can vary
+    country_upper = news_df['country'].astype(str).str.upper()
+    impact_upper = news_df['impact'].astype(str).str.upper()
     relevant = news_df[
-        (news_df['country'].isin(currencies)) &
-        (news_df['impact'].isin(['High', 'Medium']))
+        (country_upper.isin(currencies)) &
+        (impact_upper.isin(['HIGH', 'MEDIUM']))
     ].copy()
+    total_relevant = len(relevant)
     if relevant.empty:
-        return [], False
+        return [], False, 0
     high_risk = False
     upcoming_events = []
     for _, row in relevant.iterrows():
@@ -48,13 +52,13 @@ def check_pair_news(news_df, pair_name):
         event_time = pd.to_datetime(row['datetime'], utc=True)
         diff_minutes = (event_time - now).total_seconds() / 60.0
         if -30 <= diff_minutes <= 60:
-            if row['impact'] == 'High':
+            if str(row['impact']).upper() == 'HIGH':
                 high_risk = True
             upcoming_events.append({
                 'title': row['title'], 'country': row['country'], 'impact': row['impact'],
                 'time': event_time.strftime('%H:%M UTC'), 'diff': int(diff_minutes)
             })
-    return upcoming_events, high_risk
+    return upcoming_events, high_risk, total_relevant
 
 # ──────────────────────────────────────────────────────────────
 # 2) ADVANCED TECHNICAL INDICATORS & PRICE ACTION
@@ -287,13 +291,17 @@ with st.sidebar:
     """)
 
 if train_btn:
-    upcoming_events, is_high_risk = check_pair_news(news_data, pair_name)
+    upcoming_events, is_high_risk, total_relevant = check_pair_news(news_data, pair_name)
     if is_high_risk:
         st.error(f"🚨 **DIGNIIN NEWS ADAG:** Pair-kan ({pair_name}) wuxuu leeyahay warar High-Impact ah!")
     elif upcoming_events:
         st.warning(f"⚠️ **DIGNIIN NEWS:** Waxaa jira warar Medium-Impact ah oo ku dhow pair-kan:")
         for ev in upcoming_events:
             st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
+    elif total_relevant > 0:
+        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe (waqti fog ayay ku yaalliin).")
+    else:
+        st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
 
     macro_trend = get_macro_trend(PAIRS[pair_name])
     st.info(f"🌐 **Multi-Timeframe Macro Trend (1H):** {macro_trend}")
