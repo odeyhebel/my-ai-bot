@@ -260,7 +260,7 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
     return pd.DataFrame(rows)
 
 # ──────────────────────────────────────────────────────────────
-# 6) STREAMLIT UI DESIGN (Fududeyn iyo Joojinta Digniinta Badan)
+# 6) STREAMLIT UI DESIGN (Safety checks RESTORED)
 # ──────────────────────────────────────────────────────────────
 
 st.title("🔬 PROV MAHAD - 3-AI ENSEMBLE ELITE BOT")
@@ -292,8 +292,10 @@ if train_btn:
         st.warning(f"⚠️ **DIGNIIN NEWS:** Waxaa jira warar Medium-Impact ah oo ku dhow pair-kan:")
         for ev in upcoming_events:
             st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
+    elif total_relevant > 0:
+        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe.")
     else:
-        st.success(f"✅ **News:** Suuqu waa degan yahay marka la eego wararka ku dhow dhow pair-kan ({pair_name}).")
+        st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
 
     macro_trend = get_macro_trend(PAIRS[pair_name])
     st.info(f"🌐 **Multi-Timeframe Macro Trend (1H):** {macro_trend}")
@@ -328,12 +330,25 @@ if train_btn:
         col2.metric("🎯 3-AI CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
 
-        # Halkan waxaan ka saarnay shuruudaha adag ee digniinta joogtada ah keunayay,
-        # si ay u muujiso fariin guul ama cagaaran marka signal-ku soo baxo:
+        # RESTORED: ROC-AUC + MTF conflict + confidence threshold checks
+        # (kuwaas oo mar hore la saaray - waa qeybaha ugu MUHIIMSAN ee digniinta daacadda ah)
+        auc = metrics["roc_auc"]
+        mtf_conflict = False
+        if "BULLISH" in macro_trend and sig == "SELL (PUT)":
+            mtf_conflict = True
+        elif "BEARISH" in macro_trend and sig == "BUY (CALL)":
+            mtf_conflict = True
+
         if is_high_risk:
             st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar adag ah, ka fogow trade-kan!")
+        elif mtf_conflict:
+            st.error(f"⚠️ **MTF CONFLICT WARNING:** Signal-kani ({sig}) wuxuu ka horjeedaa macro trend-ka 1H ({macro_trend}). Waa halis in la galo!")
+        elif pd.isna(auc) or auc < 0.55:
+            st.error(f"⚠️ **Digniin Halis ah:** Model-ka ROC-AUC-giisu waa hooseeyaa ({auc:.3f}). Ha gelin trade-ka!")
+        elif conf < 0.70:
+            st.warning(f"⚠️ **Fariin:** Kalsoonida 3-AI waa {conf*100:.1f}% (Ka hooseysa 70%). Sug fursad xoog badan.")
         else:
-            st.success(f"🚀 **SIGNAL-KA WAA DIYAAR:** Sadexda AI waxay soo saareen jihada **{sig}** iyadoo kalsoonidu tahay ({conf*100:.1f}%)!")
+            st.success(f"🚀 **SIGNAL-KA WAA DIYAAR:** Sadexda AI waxay soo saareen jihada **{sig}** iyadoo kalsoonidu tahay ({conf*100:.1f}%), ROC-AUC: {auc:.3f}!")
 
     st.divider()
 
