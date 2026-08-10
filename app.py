@@ -114,7 +114,7 @@ def calc_adx(high, low, close, period=14):
     return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
 
 # ──────────────────────────────────────────────────────────────
-# 3) DATA DOWNLOAD & MACRO MTF CHECKER
+# 3) DATA DOWNLOAD
 # ──────────────────────────────────────────────────────────────
 
 PAIRS = {
@@ -156,17 +156,6 @@ def fetch_data(ticker, interval):
     if len(df) > 2:
         df = df.iloc[:-1]
     return df
-
-def get_macro_trend(ticker):
-    try:
-        df_macro = _download_raw(ticker, "1h", "30d")
-        if len(df_macro) > 50:
-            ema50 = df_macro["Close"].ewm(span=50, adjust=False).mean().iloc[-1]
-            current_close = df_macro["Close"].iloc[-1]
-            return "BULLISH (Kor)" if current_close > ema50 else "BEARISH (Hoos)"
-    except Exception:
-        pass
-    return "NEUTRAL"
 
 # ──────────────────────────────────────────────────────────────
 # 4) ELITE FEATURE & LABEL ENGINEERING
@@ -260,11 +249,11 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
     return pd.DataFrame(rows)
 
 # ──────────────────────────────────────────────────────────────
-# 6) STREAMLIT UI DESIGN (Safety checks RESTORED)
+# 6) STREAMLIT UI DESIGN (MTF Filter la saaray)
 # ──────────────────────────────────────────────────────────────
 
 st.title("🔬 PROV MAHAD - 3-AI ENSEMBLE ELITE BOT")
-st.caption("Real Market Binary Engine (3-AI Voting Ensemble + Price Action + MTF + News Filter)")
+st.caption("Real Market Binary Engine (3-AI Voting Ensemble + Price Action + News Filter)")
 
 news_data = fetch_news_calendar()
 
@@ -281,7 +270,7 @@ with st.sidebar:
     st.write("---")
     st.info("""
     * **3-AI Voting**: Sadex Algorithms ayaa isla ogolaada signal-ka.
-    * **MTF Filter**: Jihada 1-Hour ayaa xukunta guud ahaan nidaamka.
+    * **News Filter**: Warar High/Medium-Impact ah ayaa la digniineeyaa.
     """)
 
 if train_btn:
@@ -296,9 +285,6 @@ if train_btn:
         st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe.")
     else:
         st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
-
-    macro_trend = get_macro_trend(PAIRS[pair_name])
-    st.info(f"🌐 **Multi-Timeframe Macro Trend (1H):** {macro_trend}")
 
     with st.spinner("3-da AI ee kala duwan ayaa falanqeynaya suuqa (Ensemble Voting)..."):
         try:
@@ -330,19 +316,11 @@ if train_btn:
         col2.metric("🎯 3-AI CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
 
-        # RESTORED: ROC-AUC + MTF conflict + confidence threshold checks
-        # (kuwaas oo mar hore la saaray - waa qeybaha ugu MUHIIMSAN ee digniinta daacadda ah)
+        # ROC-AUC + confidence threshold checks (MTF check la saaray)
         auc = metrics["roc_auc"]
-        mtf_conflict = False
-        if "BULLISH" in macro_trend and sig == "SELL (PUT)":
-            mtf_conflict = True
-        elif "BEARISH" in macro_trend and sig == "BUY (CALL)":
-            mtf_conflict = True
 
         if is_high_risk:
             st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar adag ah, ka fogow trade-kan!")
-        elif mtf_conflict:
-            st.error(f"⚠️ **MTF CONFLICT WARNING:** Signal-kani ({sig}) wuxuu ka horjeedaa macro trend-ka 1H ({macro_trend}). Waa halis in la galo!")
         elif pd.isna(auc) or auc < 0.55:
             st.error(f"⚠️ **Digniin Halis ah:** Model-ka ROC-AUC-giisu waa hooseeyaa ({auc:.3f}). Ha gelin trade-ka!")
         elif conf < 0.70:
