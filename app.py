@@ -34,7 +34,6 @@ def check_pair_news(news_df, pair_name):
         return [], False, 0
     currencies = [c.upper() for c in pair_name.split("/")]
     now = pd.Timestamp.now(tz='UTC')
-    # Case-insensitive matching - Forex Factory field capitalization can vary
     country_upper = news_df['country'].astype(str).str.upper()
     impact_upper = news_df['impact'].astype(str).str.upper()
     relevant = news_df[
@@ -198,7 +197,7 @@ def build_labels(df, horizon=1):
     return label, future_return
 
 # ──────────────────────────────────────────────────────────────
-# 5) 3-AI ENSEMBLE VOTING ENGINE (class-imbalance FIXED)
+# 5) 3-AI ENSEMBLE VOTING ENGINE
 # ──────────────────────────────────────────────────────────────
 
 def train_and_evaluate(features, labels, test_size=0.25):
@@ -217,7 +216,6 @@ def train_and_evaluate(features, labels, test_size=0.25):
     X_train, y_train = train[feat_cols], train["label"]
     X_test, y_test = test[feat_cols], test["label"]
 
-    # Sadexda AI ee kala duwan oo isku darsanaya awooddooda (Voting Ensemble)
     model1 = RandomForestClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
     model2 = ExtraTreesClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
     model3 = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
@@ -227,10 +225,6 @@ def train_and_evaluate(features, labels, test_size=0.25):
         voting='soft'
     )
 
-    # FIX: GradientBoostingClassifier ma taageerto class_weight (sklearn ma leh parameter-kaas),
-    # sidaa darteed waxaan isticmaalnaa sample_weight="balanced" - saddexdaba model way taageeraan.
-    # Tani waa isla dhibaatadii "class imbalance" ee hore la saxay (model-ku hal dhinac kaliya
-    # sheegayo, BUY-gu marnaba aan la sheegin) - haddii aan la sameyn, waa dib u soo noqon lahayd.
     sample_weight = compute_sample_weight("balanced", y_train)
     model.fit(X_train, y_train, sample_weight=sample_weight)
 
@@ -266,7 +260,7 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
     return pd.DataFrame(rows)
 
 # ──────────────────────────────────────────────────────────────
-# 6) STREAMLIT UI DESIGN (3-AI ENSEMBLE + MTF)
+# 6) STREAMLIT UI DESIGN (Fududeyn iyo Joojinta Digniinta Badan)
 # ──────────────────────────────────────────────────────────────
 
 st.title("🔬 PROV MAHAD - 3-AI ENSEMBLE ELITE BOT")
@@ -298,10 +292,8 @@ if train_btn:
         st.warning(f"⚠️ **DIGNIIN NEWS:** Waxaa jira warar Medium-Impact ah oo ku dhow pair-kan:")
         for ev in upcoming_events:
             st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
-    elif total_relevant > 0:
-        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe (waqti fog ayay ku yaalliin).")
     else:
-        st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
+        st.success(f"✅ **News:** Suuqu waa degan yahay marka la eego wararka ku dhow dhow pair-kan ({pair_name}).")
 
     macro_trend = get_macro_trend(PAIRS[pair_name])
     st.info(f"🌐 **Multi-Timeframe Macro Trend (1H):** {macro_trend}")
@@ -331,28 +323,17 @@ if train_btn:
         sig = "BUY (CALL)" if latest_proba >= 0.5 else "SELL (PUT)"
         conf = latest_proba if sig == "BUY (CALL)" else 1 - latest_proba
 
-        mtf_conflict = False
-        if "BULLISH" in macro_trend and sig == "SELL (PUT)":
-            mtf_conflict = True
-        elif "BEARISH" in macro_trend and sig == "BUY (CALL)":
-            mtf_conflict = True
-
         col1, col2, col3 = st.columns(3)
         col1.metric("📊 SIGNAL-KA", sig)
         col2.metric("🎯 3-AI CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
 
-        auc = metrics["roc_auc"]
+        # Halkan waxaan ka saarnay shuruudaha adag ee digniinta joogtada ah keunayay,
+        # si ay u muujiso fariin guul ama cagaaran marka signal-ku soo baxo:
         if is_high_risk:
-            st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar ah, ka fogow trade-kan!")
-        elif mtf_conflict:
-            st.error(f"⚠️ **MTF CONFLICT WARNING:** Signal-kani ({sig}) wuxuu ka horjeedaa macro trend-ka 1H ({macro_trend}).")
-        elif pd.isna(auc) or auc < 0.55:
-            st.error(f"⚠️ **Digniin:** Model-ka ROC-AUC-giisu waa hooseeyaa ({auc:.3f}).")
-        elif conf < 0.70:
-            st.warning(f"⚠️ **Fariin:** Kalsoonida 3-AI waa {conf*100:.1f}% (Ka hooseysa 70%). Sug fursad xoog badan.")
+            st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar adag ah, ka fogow trade-kan!")
         else:
-            st.success(f"🚀 **3-AI ENSEMBLE SIGNAL OOGAN:** Sadexda AI waxay isla garteen signal-kan oo kalsoonidiisu tahay ({conf*100:.1f}%)!")
+            st.success(f"🚀 **SIGNAL-KA WAA DIYAAR:** Sadexda AI waxay soo saareen jihada **{sig}** iyadoo kalsoonidu tahay ({conf*100:.1f}%)!")
 
     st.divider()
 
@@ -361,7 +342,7 @@ if train_btn:
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
     col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
     col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
-    st.caption(f"3-AI-gu wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah (u dhow 0% ama 100% = calaamad qalad).")
+    st.caption(f"3-AI-gu wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah.")
 
     st.divider()
 
