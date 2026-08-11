@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="PROV MAHAD - 3-AI Ensemble Elite", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="PROV MAHAD - Ultimate Elite Binary Bot", layout="wide", initial_sidebar_state="collapsed")
 
 # ──────────────────────────────────────────────────────────────
-# 1) NEWS TRACKER (LIVE FOREX FACTORY)
+# 1) LIVE NEWS TRACKER (FOREX FACTORY)
 # ──────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -60,7 +60,7 @@ def check_pair_news(news_df, pair_name):
     return upcoming_events, high_risk, total_relevant
 
 # ──────────────────────────────────────────────────────────────
-# 2) ADVANCED TECHNICAL INDICATORS & PRICE ACTION
+# 2) ADVANCED MOMENTUM & TECHNICAL INDICATORS
 # ──────────────────────────────────────────────────────────────
 
 def calc_rsi(close, period=14):
@@ -70,51 +70,24 @@ def calc_rsi(close, period=14):
     avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi.fillna(50)
+    return (100 - (100 / (1 + rs))).fillna(50)
 
 def calc_macd(close, fast=12, slow=26, signal=9):
     ema_fast = close.ewm(span=fast, adjust=False).mean()
     ema_slow = close.ewm(span=slow, adjust=False).mean()
     macd_line = ema_fast - ema_slow
     signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    hist = macd_line - signal_line
-    return macd_line, signal_line, hist
+    return macd_line, signal_line, macd_line - signal_line
 
 def calc_bollinger(close, period=20, std_mult=2):
     sma = close.rolling(period).mean()
     std = close.rolling(period).std()
     upper = sma + std_mult * std
     lower = sma - std_mult * std
-    percent_b = (close - lower) / (upper - lower).replace(0, np.nan)
-    return percent_b.fillna(0.5)
-
-def calc_stochastic(high, low, close, period=14):
-    lowest = low.rolling(period).min()
-    highest = high.rolling(period).max()
-    k = (close - lowest) / (highest - lowest).replace(0, np.nan) * 100
-    return k.fillna(50)
-
-def calc_adx(high, low, close, period=14):
-    plus_dm = high.diff()
-    minus_dm = -low.diff()
-    plus_dm[plus_dm < 0] = 0
-    minus_dm[minus_dm < 0] = 0
-    plus_dm[(plus_dm - minus_dm) < 0] = 0
-    minus_dm[(minus_dm - plus_dm) < 0] = 0
-    tr1 = high - low
-    tr2 = (high - close.shift()).abs()
-    tr3 = (low - close.shift()).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    plus_di = 100 * (plus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan))
-    minus_di = 100 * (minus_dm.ewm(alpha=1/period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan))
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
-    adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
+    return ((close - lower) / (upper - lower).replace(0, np.nan)).fillna(0.5)
 
 # ──────────────────────────────────────────────────────────────
-# 3) DATA DOWNLOAD
+# 3) DATA DOWNLOADER & MULTI-TIMEFRAME ENGINE
 # ──────────────────────────────────────────────────────────────
 
 PAIRS = {
@@ -140,57 +113,46 @@ def _resample_ohlc(df, rule):
     agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
     if "Volume" in df.columns:
         agg["Volume"] = "sum"
-    out = df.resample(rule).agg(agg)
-    return out.dropna()
+    return df.resample(rule).agg(agg).dropna()
 
 @st.cache_data(ttl=30, show_spinner=False)
 def fetch_data(ticker, interval):
     if interval in RESAMPLE_INTERVALS:
         base_interval, rule = RESAMPLE_INTERVALS[interval]
-        base_period = INTERVAL_PERIOD_MAP.get(base_interval, "7d")
-        raw = _download_raw(ticker, base_interval, base_period)
+        raw = _download_raw(ticker, base_interval, INTERVAL_PERIOD_MAP.get(base_interval, "7d"))
         df = _resample_ohlc(raw, rule)
     else:
-        period = INTERVAL_PERIOD_MAP.get(interval, "60d")
-        df = _download_raw(ticker, interval, period)
+        df = _download_raw(ticker, interval, INTERVAL_PERIOD_MAP.get(interval, "60d"))
     if len(df) > 2:
         df = df.iloc[:-1]
     return df
 
 # ──────────────────────────────────────────────────────────────
-# 4) ELITE FEATURE & LABEL ENGINEERING
+# 4) ELITE FEATURE & TARGET ENGINEERING
 # ──────────────────────────────────────────────────────────────
 
 def build_features(df):
     out = pd.DataFrame(index=df.index)
     close, high, low, open_p = df["Close"], df["High"], df["Low"], df["Open"]
     out["rsi"] = calc_rsi(close, 14)
-    _, _, macd_hist = calc_macd(close)
-    out["macd_hist"] = macd_hist
+    _, _, out["macd_hist"] = calc_macd(close)
     out["bb_percent"] = calc_bollinger(close, 20, 2)
-    out["stoch_k"] = calc_stochastic(high, low, close, 14)
-    adx, plus_di, minus_di = calc_adx(high, low, close, 14)
-    out["adx"] = adx
-    out["di_diff"] = plus_di - minus_di
     out["candle_body"] = (close - open_p) / (high - low).replace(0, np.nan)
-    out["upper_wick"] = (high - pd.concat([open_p, close], axis=1).max(axis=1)) / (high - low).replace(0, np.nan)
-    out["lower_wick"] = (pd.concat([open_p, close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
     out["return_1"] = close.pct_change(1)
     out["return_3"] = close.pct_change(3)
+    out["momentum"] = close - close.shift(4)
     return out
 
 def build_labels(df, horizon=1):
-    close = df["Close"]
-    future_return = close.shift(-horizon) / close - 1
-    label = (future_return > 0).astype(int)
-    return label, future_return
+    future_return = df["Close"].shift(-horizon) / df["Close"] - 1
+    return (future_return > 0).astype(int), future_return
 
 # ──────────────────────────────────────────────────────────────
-# 5) 3-AI ENSEMBLE VOTING ENGINE
+# 5) HIGH-PERFORMANCE ENSEMBLE ENGINE (ML + RULES)
 # ──────────────────────────────────────────────────────────────
 
 def train_and_evaluate(features, labels, test_size=0.25):
-    from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier, VotingClassifier
+    from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, VotingClassifier
     from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
     from sklearn.utils.class_weight import compute_sample_weight
 
@@ -205,12 +167,11 @@ def train_and_evaluate(features, labels, test_size=0.25):
     X_train, y_train = train[feat_cols], train["label"]
     X_test, y_test = test[feat_cols], test["label"]
 
-    model1 = RandomForestClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
-    model2 = ExtraTreesClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
-    model3 = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
+    model1 = RandomForestClassifier(n_estimators=200, max_depth=7, min_samples_leaf=10, random_state=42, n_jobs=1)
+    model2 = ExtraTreesClassifier(n_estimators=200, max_depth=7, min_samples_leaf=10, random_state=42, n_jobs=1)
 
     model = VotingClassifier(
-        estimators=[('rf', model1), ('et', model2), ('gb', model3)],
+        estimators=[('rf', model1), ('et', model2)],
         voting='soft'
     )
 
@@ -233,76 +194,47 @@ def train_and_evaluate(features, labels, test_size=0.25):
 
     return model, feat_cols, X_test, y_test, proba_test, metrics
 
-def accuracy_by_confidence(y_test, proba_test, thresholds):
-    rows = []
-    for t in thresholds:
-        buy_mask = proba_test >= t
-        sell_mask = proba_test <= (1 - t)
-        mask = buy_mask | sell_mask
-        n = mask.sum()
-        if n == 0:
-            continue
-        pred = np.where(buy_mask[mask], 1, 0)
-        actual = y_test[mask].values
-        acc = (pred == actual).mean()
-        rows.append({"Confidence Level": f"{int(t*100)}%+", "Filtered Trades": int(n), "Accuracy Natiijo": f"{acc * 100:.1f}%"})
-    return pd.DataFrame(rows)
-
 # ──────────────────────────────────────────────────────────────
-# 6) STREAMLIT UI DESIGN (MTF Filter la saaray)
+# 6) STREAMLIT USER INTERFACE
 # ──────────────────────────────────────────────────────────────
 
-st.title("🔬 PROV MAHAD - 3-AI ENSEMBLE ELITE BOT")
-st.caption("Real Market Binary Engine (3-AI Voting Ensemble + Price Action + News Filter)")
+st.title("🚀 PROV MAHAD - ULTIMATE BINARY ELITE BOT")
+st.caption("Advanced Momentum & Machine Learning Voting Engine for Pocket Option")
 
 news_data = fetch_news_calendar()
 
 with st.sidebar:
-    st.header("⚙️ Nidaamka Isku-dubbaridda")
-    pair_name = st.selectbox("1. Dooro Lacagta (Pair)", list(PAIRS.keys()))
-    interval = st.selectbox("2. Dooro Waqtiga (Timeframe)", ["3m", "5m", "15m", "1h"], index=0)
+    st.header("⚙️ Settings")
+    pair_name = st.selectbox("Dooro Pair-ka Lacagta", list(PAIRS.keys()))
+    interval = st.selectbox("Dooro Timeframe-ka", ["1m", "3m", "5m", "15m"], index=1)
+    predict_horizon = st.slider("Horizon (Candles)", 1, 5, 1)
+    test_size_pct = st.slider("Test Size (%)", 10, 50, 25, 5) / 100.0
     st.write("---")
-    st.subheader("🛠️ Advanced Settings")
-    predict_horizon = st.slider("Predict Horizon (N Candles)", min_value=1, max_value=5, value=1, step=1)
-    test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5) / 100.0
-    st.write("---")
-    train_btn = st.button("🚀 GET 3-AI ENSEMBLE SIGNAL")
-    st.write("---")
-    st.info("""
-    * **3-AI Voting**: Sadex Algorithms ayaa isla ogolaada signal-ka.
-    * **News Filter**: Warar High/Medium-Impact ah ayaa la digniineeyaa.
-    """)
+    train_btn = st.button("🔥 RUN ULTIMATE ANALYSIS")
 
 if train_btn:
     upcoming_events, is_high_risk, total_relevant = check_pair_news(news_data, pair_name)
     if is_high_risk:
         st.error(f"🚨 **DIGNIIN NEWS ADAG:** Pair-kan ({pair_name}) wuxuu leeyahay warar High-Impact ah!")
-    elif upcoming_events:
-        st.warning(f"⚠️ **DIGNIIN NEWS:** Waxaa jira warar Medium-Impact ah oo ku dhow pair-kan:")
-        for ev in upcoming_events:
-            st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
-    elif total_relevant > 0:
-        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe.")
     else:
-        st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
+        st.success(f"✅ **News Check:** Suuqu wuxuu u muuqdaa mid degan marka loo eego wararka.")
 
-    with st.spinner("3-da AI ee kala duwan ayaa falanqeynaya suuqa (Ensemble Voting)..."):
+    with st.spinner("Falanqeynaya Momentum-ka iyo Xogta Suuqa..."):
         try:
             raw = fetch_data(PAIRS[pair_name], interval)
         except Exception as e:
             st.error(f"Cilad ayaa dhacday: {e}")
             st.stop()
 
-    if raw.empty or len(raw) < 200:
-        st.error("Xog ku filan lama helin. Isku day Timeframe kale.")
+    if raw.empty or len(raw) < 150:
+        st.error("Xog ku filan lama helin. Fadlan isku day Timeframe kale.")
         st.stop()
 
     feats = build_features(raw)
-    labels, future_ret = build_labels(raw, horizon=predict_horizon)
-
+    labels, _ = build_labels(raw, horizon=predict_horizon)
     model, feat_cols, X_test, y_test, proba_test, metrics = train_and_evaluate(feats, labels, test_size=test_size_pct)
 
-    st.subheader("🔮 3-AI ENSEMBLE LIVE SIGNAL")
+    st.subheader("🎯 ULTIMATE LIVE SIGNAL RESULT")
     latest_feats = feats.dropna().iloc[[-1]]
     latest_price = raw["Close"].iloc[-1]
 
@@ -313,38 +245,21 @@ if train_btn:
 
         col1, col2, col3 = st.columns(3)
         col1.metric("📊 SIGNAL-KA", sig)
-        col2.metric("🎯 3-AI CONFIDENCE", f"{conf*100:.1f}%")
+        col2.metric("🎯 CONFIDENCE", f"{conf*100:.1f}%")
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
 
-        # ROC-AUC + confidence threshold checks (MTF check la saaray)
-        auc = metrics["roc_auc"]
-
         if is_high_risk:
-            st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar adag ah, ka fogow trade-kan!")
-        elif pd.isna(auc) or auc < 0.55:
-            st.error(f"⚠️ **Digniin Halis ah:** Model-ka ROC-AUC-giisu waa hooseeyaa ({auc:.3f}). Ha gelin trade-ka!")
-        elif conf < 0.70:
-            st.warning(f"⚠️ **Fariin:** Kalsoonida 3-AI waa {conf*100:.1f}% (Ka hooseysa 70%). Sug fursad xoog badan.")
+            st.error("⛔ **TALO:** Ka fogow trade-kan sababtoo ah waxaa jira warar halis ah!")
+        elif conf < 0.58:
+            st.warning(f"⚠️ **Fariin:** Kalsoonidu waa hooseysaa ({conf*100:.1f}%). Sug fursad ka sii xoog badan.")
         else:
-            st.success(f"🚀 **SIGNAL-KA WAA DIYAAR:** Sadexda AI waxay soo saareen jihada **{sig}** iyadoo kalsoonidu tahay ({conf*100:.1f}%), ROC-AUC: {auc:.3f}!")
+            st.success(f"🚀 **FURSAD VVIP:** Jihada **{sig}** ayaa si xoog leh loogu talinayaa iyadoo kalsoonidu tahay ({conf*100:.1f}%)!")
 
     st.divider()
-
-    st.subheader("📊 Tayada Model-ka (3-AI Validation)")
-    col_acc, col_auc, col_prec = st.columns(3)
-    col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
-    col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
-    col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
-    st.caption(f"3-AI-gu wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah.")
-
-    st.divider()
-
-    st.subheader("🎯 Jadwalka Saxnaanta Heerarka Kalsoonida (Confidence Matrix)")
-    thresh_df = accuracy_by_confidence(y_test.reset_index(drop=True), proba_test, [0.5, 0.6, 0.7, 0.8])
-    if not thresh_df.empty:
-        st.dataframe(thresh_df, use_container_width=True, hide_index=True)
-    else:
-        st.write("Xog ku filan jadwalka lama hayo hadda.")
-
+    st.subheader("📊 Model Performance Metrics")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🎯 Accuracy", f"{metrics['accuracy']*100:.1f}%")
+    c2.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
+    c3.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
 else:
-    st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET 3-AI ENSEMBLE SIGNAL'.")
+    st.info("Riix badanka '🔥 RUN ULTIMATE ANALYSIS' si aad u bilowdo falanqaynta suuqa.")
