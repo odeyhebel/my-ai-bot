@@ -65,19 +65,19 @@ def check_pair_news(news_df, pair_name):
 
 def apply_kalman_filter(close_prices):
     n_iter = len(close_prices)
-    sz = (n_iter,) 
-    Q = 1e-5  # Process variance
-    R = 0.1**2 # Measurement variance
-    
+    sz = (n_iter,)
+    Q = 1e-5
+    R = 0.1**2
+
     xhat = np.zeros(sz)
     P = np.zeros(sz)
     xhatminus = np.zeros(sz)
     Pminus = np.zeros(sz)
     K = np.zeros(sz)
-    
+
     xhat[0] = close_prices.iloc[0]
     P[0] = 1.0
-    
+
     for k in range(1, n_iter):
         xhatminus[k] = xhat[k-1]
         Pminus[k] = P[k-1] + Q
@@ -198,10 +198,9 @@ def fetch_data(ticker, interval):
 def build_features(df):
     out = pd.DataFrame(index=df.index)
     close, high, low, open_p = df["Close"], df["High"], df["Low"], df["Open"]
-    
-    # Kalman Filtered Price si looga saaro Noise-ka
+
     clean_close = apply_kalman_filter(close)
-    
+
     out["rsi"] = calc_rsi(clean_close, 14)
     _, _, macd_hist = calc_macd(clean_close)
     out["macd_hist"] = macd_hist
@@ -215,8 +214,7 @@ def build_features(df):
     out["lower_wick"] = (pd.concat([open_p, clean_close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
     out["return_1"] = clean_close.pct_change(1)
     out["return_3"] = clean_close.pct_change(3)
-    
-    # ATR Volatility normalization for noise gating
+
     atr = calc_atr(high, low, close, 14)
     out["volatility_norm"] = atr / close
     return out
@@ -291,12 +289,55 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
         rows.append({"Confidence Level": f"{int(t*100)}%+", "Filtered Trades": int(n), "Accuracy Natiijo": f"{acc * 100:.1f}%"})
     return pd.DataFrame(rows)
 
+# RESTORED: Walk-forward validation - trains/tests the SAME anti-noise
+# pipeline (Kalman + ATR + 3-AI) across multiple chronological windows,
+# so the reported ROC-AUC reflects consistency over time, not one lucky split.
+def walk_forward_validation(features, labels, n_folds=4):
+    from sklearn.metrics import roc_auc_score, accuracy_score
+    from sklearn.utils.class_weight import compute_sample_weight
+
+    data = features.copy()
+    data["label"] = labels
+    data = data.dropna()
+    feat_cols = [c for c in data.columns if c != "label"]
+
+    n = len(data)
+    fold_size = n // (n_folds + 1)
+    if fold_size < 30:
+        return None
+
+    rows = []
+    for i in range(1, n_folds + 1):
+        train_end = fold_size * i
+        test_end = fold_size * (i + 1) if i < n_folds else n
+        train = data.iloc[:train_end]
+        test = data.iloc[train_end:test_end]
+        if len(test) < 20 or len(train) < 50:
+            continue
+        X_train, y_train = train[feat_cols], train["label"]
+        X_test, y_test = test[feat_cols], test["label"]
+
+        model, _ = build_ensemble()
+        sample_weight = compute_sample_weight("balanced", y_train)
+        model.fit(X_train, y_train, sample_weight=sample_weight)
+        proba = model.predict_proba(X_test)[:, 1]
+        pred = (proba >= 0.5).astype(int)
+        try:
+            auc = roc_auc_score(y_test, proba)
+        except ValueError:
+            auc = float("nan")
+        acc = accuracy_score(y_test, pred)
+        rows.append({"Window": f"#{i}", "Train candles": len(train), "Test candles": len(test),
+                      "ROC-AUC": round(auc, 3) if not np.isnan(auc) else "N/A",
+                      "Accuracy": f"{acc*100:.1f}%"})
+    return pd.DataFrame(rows) if rows else None
+
 # ──────────────────────────────────────────────────────────────
 # 7) STREAMLIT UI DESIGN
 # ──────────────────────────────────────────────────────────────
 
 st.title("🔬 PROV MAHAD - ANTI-NOISE 3-AI ELITE")
-st.caption("Anti-Noise Engine (Kalman Filter + ATR Volatility Gate + 3-AI Ensemble + News Filter)")
+st.caption("Anti-Noise Engine (Kalman Filter + ATR Volatility Gate + 3-AI Ensemble + News Filter + Walk-Forward)")
 
 news_data = fetch_news_calendar()
 
@@ -308,6 +349,7 @@ with st.sidebar:
     st.subheader("🛠️ Advanced Settings")
     predict_horizon = st.slider("Predict Horizon (N Candles)", min_value=1, max_value=5, value=1, step=1)
     test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5) / 100.0
+    run_walk_forward = st.checkbox("Walk-Forward Validation (gaabis ah, waqti dheer qaadaya)", value=False)
     st.write("---")
     train_btn = st.button("🚀 GET ANTI-NOISE SIGNAL")
     st.write("---")
@@ -315,6 +357,7 @@ with st.sidebar:
     * **Kalman Filter**: Waxaa lagu sifeeyay Noise-ka qiimaha.
     * **ATR Gate**: Wuu xirayaa signal-ka haddii suuqu dagan yahay.
     * **75% Strict Rule**: Kalsoonidu waa inay ahaataa mid sareysa.
+    * **Walk-Forward**: Ku tijaabiya daacadnimada model-ka (ma aha noise reduction).
     """)
 
 if train_btn:
@@ -366,8 +409,7 @@ if train_btn:
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
 
         auc = metrics["roc_auc"]
-        
-        # Anti-Noise Strict Gating Logic
+
         if is_high_risk:
             st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar adag ah, ka fogow trade-kan!")
         elif current_vol < (avg_vol * 0.4):
@@ -386,6 +428,7 @@ if train_btn:
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
     col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
     col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
+    st.caption(f"3-AI-gu wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah.")
 
     st.divider()
 
@@ -400,6 +443,17 @@ if train_btn:
         st.dataframe(thresh_df, use_container_width=True, hide_index=True)
     else:
         st.write("Xog ku filan jadwalka lama hayo hadda.")
+
+    if run_walk_forward:
+        st.divider()
+        st.subheader("🔁 Walk-Forward Validation (4 window oo kala duwan)")
+        st.caption("Isla Anti-Noise pipeline-ka (Kalman + ATR + 3-AI) ayaa lagu tababaray oo lagu tijaabiyay 4 xilli oo kala duwan - haddii ROC-AUC-yadu joogto yihiin, natiijadu waa mid la isku halayn karo.")
+        with st.spinner("Walk-forward validation socda (4 model oo la tababarayo)..."):
+            wf_df = walk_forward_validation(feats, labels, n_folds=4)
+        if wf_df is not None:
+            st.dataframe(wf_df, use_container_width=True, hide_index=True)
+        else:
+            st.write("Xog ku filan walk-forward validation lama hayo.")
 
 else:
     st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET ANTI-NOISE SIGNAL'.")
