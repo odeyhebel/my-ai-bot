@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="PROV MAHAD - Anti-Noise 3-AI Elite", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="PROV MAHAD - 3-AI Ensemble Elite", layout="wide", initial_sidebar_state="collapsed")
 
 # ──────────────────────────────────────────────────────────────
 # 1) NEWS TRACKER (LIVE FOREX FACTORY)
@@ -60,34 +60,7 @@ def check_pair_news(news_df, pair_name):
     return upcoming_events, high_risk, total_relevant
 
 # ──────────────────────────────────────────────────────────────
-# 2) KALMAN FILTER & NOISE REDUCTION ENGINE
-# ──────────────────────────────────────────────────────────────
-
-def apply_kalman_filter(close_prices):
-    n_iter = len(close_prices)
-    sz = (n_iter,)
-    Q = 1e-5
-    R = 0.1**2
-
-    xhat = np.zeros(sz)
-    P = np.zeros(sz)
-    xhatminus = np.zeros(sz)
-    Pminus = np.zeros(sz)
-    K = np.zeros(sz)
-
-    xhat[0] = close_prices.iloc[0]
-    P[0] = 1.0
-
-    for k in range(1, n_iter):
-        xhatminus[k] = xhat[k-1]
-        Pminus[k] = P[k-1] + Q
-        K[k] = Pminus[k] / (Pminus[k] + R)
-        xhat[k] = xhatminus[k] + K[k] * (close_prices.iloc[k] - xhatminus[k])
-        P[k] = (1 - K[k]) * Pminus[k]
-    return pd.Series(xhat, index=close_prices.index)
-
-# ──────────────────────────────────────────────────────────────
-# 3) ADVANCED TECHNICAL INDICATORS
+# 2) ADVANCED TECHNICAL INDICATORS & PRICE ACTION
 # ──────────────────────────────────────────────────────────────
 
 def calc_rsi(close, period=14):
@@ -140,6 +113,7 @@ def calc_adx(high, low, close, period=14):
     adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
 
+# NEW: ATR (Average True Range) - volatility feature
 def calc_atr(high, low, close, period=14):
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
@@ -148,7 +122,7 @@ def calc_atr(high, low, close, period=14):
     return tr.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
 
 # ──────────────────────────────────────────────────────────────
-# 4) DATA DOWNLOAD
+# 3) DATA DOWNLOAD
 # ──────────────────────────────────────────────────────────────
 
 PAIRS = {
@@ -192,31 +166,27 @@ def fetch_data(ticker, interval):
     return df
 
 # ──────────────────────────────────────────────────────────────
-# 5) FEATURE & LABEL ENGINEERING (Kalman & ATR Filter Integrated)
+# 4) ELITE FEATURE & LABEL ENGINEERING (ATR added)
 # ──────────────────────────────────────────────────────────────
 
 def build_features(df):
     out = pd.DataFrame(index=df.index)
     close, high, low, open_p = df["Close"], df["High"], df["Low"], df["Open"]
-
-    clean_close = apply_kalman_filter(close)
-
-    out["rsi"] = calc_rsi(clean_close, 14)
-    _, _, macd_hist = calc_macd(clean_close)
+    out["rsi"] = calc_rsi(close, 14)
+    _, _, macd_hist = calc_macd(close)
     out["macd_hist"] = macd_hist
-    out["bb_percent"] = calc_bollinger(clean_close, 20, 2)
-    out["stoch_k"] = calc_stochastic(high, low, clean_close, 14)
-    adx, plus_di, minus_di = calc_adx(high, low, clean_close, 14)
+    out["bb_percent"] = calc_bollinger(close, 20, 2)
+    out["stoch_k"] = calc_stochastic(high, low, close, 14)
+    adx, plus_di, minus_di = calc_adx(high, low, close, 14)
     out["adx"] = adx
     out["di_diff"] = plus_di - minus_di
-    out["candle_body"] = (clean_close - open_p) / (high - low).replace(0, np.nan)
-    out["upper_wick"] = (high - pd.concat([open_p, clean_close], axis=1).max(axis=1)) / (high - low).replace(0, np.nan)
-    out["lower_wick"] = (pd.concat([open_p, clean_close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
-    out["return_1"] = clean_close.pct_change(1)
-    out["return_3"] = clean_close.pct_change(3)
-
-    atr = calc_atr(high, low, close, 14)
-    out["volatility_norm"] = atr / close
+    out["candle_body"] = (close - open_p) / (high - low).replace(0, np.nan)
+    out["upper_wick"] = (high - pd.concat([open_p, close], axis=1).max(axis=1)) / (high - low).replace(0, np.nan)
+    out["lower_wick"] = (pd.concat([open_p, close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
+    out["return_1"] = close.pct_change(1)
+    out["return_3"] = close.pct_change(3)
+    # NEW: ATR normalized by price (so it's comparable across pairs/price levels)
+    out["atr_pct"] = calc_atr(high, low, close, 14) / close
     return out
 
 def build_labels(df, horizon=1):
@@ -226,7 +196,7 @@ def build_labels(df, horizon=1):
     return label, future_return
 
 # ──────────────────────────────────────────────────────────────
-# 6) 3-AI ENSEMBLE VOTING ENGINE
+# 5) 3-AI ENSEMBLE VOTING ENGINE
 # ──────────────────────────────────────────────────────────────
 
 def build_ensemble():
@@ -251,7 +221,7 @@ def train_and_evaluate(features, labels, test_size=0.25):
     X_train, y_train = train[feat_cols], train["label"]
     X_test, y_test = test[feat_cols], test["label"]
 
-    model, _ = build_ensemble()
+    model, rf_ref = build_ensemble()
     sample_weight = compute_sample_weight("balanced", y_train)
     model.fit(X_train, y_train, sample_weight=sample_weight)
 
@@ -269,6 +239,9 @@ def train_and_evaluate(features, labels, test_size=0.25):
     except ValueError:
         metrics["roc_auc"] = float("nan")
 
+    # NEW: feature importance - pulled from the RandomForest sub-model
+    # (VotingClassifier itself has no single "importance", so we use one
+    # of its trained members as a representative view)
     rf_fitted = model.named_estimators_['rf']
     importances = pd.Series(rf_fitted.feature_importances_, index=feat_cols).sort_values(ascending=False)
 
@@ -289,9 +262,9 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
         rows.append({"Confidence Level": f"{int(t*100)}%+", "Filtered Trades": int(n), "Accuracy Natiijo": f"{acc * 100:.1f}%"})
     return pd.DataFrame(rows)
 
-# RESTORED: Walk-forward validation - trains/tests the SAME anti-noise
-# pipeline (Kalman + ATR + 3-AI) across multiple chronological windows,
-# so the reported ROC-AUC reflects consistency over time, not one lucky split.
+# NEW: Walk-forward validation - trains/tests across multiple chronological
+# windows instead of a single split, so the reported ROC-AUC reflects
+# consistency over time rather than one lucky/unlucky period.
 def walk_forward_validation(features, labels, n_folds=4):
     from sklearn.metrics import roc_auc_score, accuracy_score
     from sklearn.utils.class_weight import compute_sample_weight
@@ -333,11 +306,11 @@ def walk_forward_validation(features, labels, n_folds=4):
     return pd.DataFrame(rows) if rows else None
 
 # ──────────────────────────────────────────────────────────────
-# 7) STREAMLIT UI DESIGN
+# 6) STREAMLIT UI DESIGN
 # ──────────────────────────────────────────────────────────────
 
-st.title("🔬 PROV MAHAD - ANTI-NOISE 3-AI ELITE")
-st.caption("Anti-Noise Engine (Kalman Filter + ATR Volatility Gate + 3-AI Ensemble + News Filter + Walk-Forward)")
+st.title("🔬 PROV MAHAD - 3-AI ENSEMBLE ELITE BOT")
+st.caption("Real Market Binary Engine (3-AI Voting + Price Action + ATR + News Filter + Walk-Forward)")
 
 news_data = fetch_news_calendar()
 
@@ -351,13 +324,12 @@ with st.sidebar:
     test_size_pct = st.slider("Test Size (%)", min_value=10, max_value=50, value=25, step=5) / 100.0
     run_walk_forward = st.checkbox("Walk-Forward Validation (gaabis ah, waqti dheer qaadaya)", value=False)
     st.write("---")
-    train_btn = st.button("🚀 GET ANTI-NOISE SIGNAL")
+    train_btn = st.button("🚀 GET 3-AI ENSEMBLE SIGNAL")
     st.write("---")
     st.info("""
-    * **Kalman Filter**: Waxaa lagu sifeeyay Noise-ka qiimaha.
-    * **ATR Gate**: Wuu xirayaa signal-ka haddii suuqu dagan yahay.
-    * **75% Strict Rule**: Kalsoonidu waa inay ahaataa mid sareysa.
-    * **Walk-Forward**: Ku tijaabiya daacadnimada model-ka (ma aha noise reduction).
+    * **3-AI Voting**: Sadex Algorithms ayaa isla ogolaada signal-ka.
+    * **News Filter**: Warar High/Medium-Impact ah ayaa la digniineeyaa.
+    * **ATR**: Volatility-ka suuqa ayaa loo isticmaalaa feature.
     """)
 
 if train_btn:
@@ -369,11 +341,11 @@ if train_btn:
         for ev in upcoming_events:
             st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
     elif total_relevant > 0:
-        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa.")
+        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe.")
     else:
         st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
 
-    with st.spinner("Anti-Noise Engine-ka ayaa falanqeynaya suuqa (Kalman + 3-AI)..."):
+    with st.spinner("3-da AI ee kala duwan ayaa falanqeynaya suuqa (Ensemble Voting)..."):
         try:
             raw = fetch_data(PAIRS[pair_name], interval)
         except Exception as e:
@@ -391,14 +363,11 @@ if train_btn:
         feats, labels, test_size=test_size_pct
     )
 
-    st.subheader("🔮 ANTI-NOISE LIVE SIGNAL")
+    st.subheader("🔮 3-AI ENSEMBLE LIVE SIGNAL")
     latest_feats = feats.dropna().iloc[[-1]]
     latest_price = raw["Close"].iloc[-1]
 
     if not latest_feats.empty:
-        current_vol = latest_feats["volatility_norm"].iloc[0]
-        avg_vol = feats["volatility_norm"].mean()
-
         latest_proba = model.predict_proba(latest_feats[feat_cols])[0, 1]
         sig = "BUY (CALL)" if latest_proba >= 0.5 else "SELL (PUT)"
         conf = latest_proba if sig == "BUY (CALL)" else 1 - latest_proba
@@ -409,21 +378,18 @@ if train_btn:
         col3.metric("💰 QIIMAHA HADA", f"{latest_price:.5f}")
 
         auc = metrics["roc_auc"]
-
         if is_high_risk:
             st.error("⛔ **TALO:** Suuqu wuxuu ku jiraa saameyn warar adag ah, ka fogow trade-kan!")
-        elif current_vol < (avg_vol * 0.4):
-            st.error("⛔ **NOISE / DEAD MARKET DETECTED:** Suuqu wuxuu leeyahay Noise ama dhaqaaq la'aan. Bot-ku wuxuu xiray signal-ka.")
         elif pd.isna(auc) or auc < 0.55:
             st.error(f"⚠️ **Digniin Halis ah:** Model-ka ROC-AUC-giisu waa hooseeyaa ({auc:.3f}). Ha gelin trade-ka!")
-        elif conf < 0.75:
-            st.warning(f"⚠️ **Fariin Strict:** Kalsoonida 3-AI waa {conf*100:.1f}% (Waxay ka hooseysaa 75% ee la rabo). Sug fursad adag.")
+        elif conf < 0.70:
+            st.warning(f"⚠️ **Fariin:** Kalsoonida 3-AI waa {conf*100:.1f}% (Ka hooseysa 70%). Sug fursad xoog badan.")
         else:
-            st.success(f"🚀 **VVIP SIGNAL (NOISE-FILTERED):** Jihada **{sig}** iyadoo kalsoonidu tahay ({conf*100:.1f}%), ROC-AUC: {auc:.3f}!")
+            st.success(f"🚀 **SIGNAL-KA WAA DIYAAR:** Sadexda AI waxay soo saareen jihada **{sig}** iyadoo kalsoonidu tahay ({conf*100:.1f}%), ROC-AUC: {auc:.3f}!")
 
     st.divider()
 
-    st.subheader("📊 Tayada Model-ka (Anti-Noise Validation)")
+    st.subheader("📊 Tayada Model-ka (3-AI Validation)")
     col_acc, col_auc, col_prec = st.columns(3)
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
     col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
@@ -432,13 +398,13 @@ if train_btn:
 
     st.divider()
 
-    st.subheader("🧩 Feature Importance")
+    st.subheader("🧩 Feature Importance (kee indicator-ka ayaa model-ka ugu saameynta badan)")
     st.bar_chart(importances)
 
     st.divider()
 
     st.subheader("🎯 Jadwalka Saxnaanta Heerarka Kalsoonida (Confidence Matrix)")
-    thresh_df = accuracy_by_confidence(y_test.reset_index(drop=True), proba_test, [0.5, 0.6, 0.7, 0.75, 0.8])
+    thresh_df = accuracy_by_confidence(y_test.reset_index(drop=True), proba_test, [0.5, 0.6, 0.7, 0.8])
     if not thresh_df.empty:
         st.dataframe(thresh_df, use_container_width=True, hide_index=True)
     else:
@@ -447,7 +413,7 @@ if train_btn:
     if run_walk_forward:
         st.divider()
         st.subheader("🔁 Walk-Forward Validation (4 window oo kala duwan)")
-        st.caption("Isla Anti-Noise pipeline-ka (Kalman + ATR + 3-AI) ayaa lagu tababaray oo lagu tijaabiyay 4 xilli oo kala duwan - haddii ROC-AUC-yadu joogto yihiin, natiijadu waa mid la isku halayn karo.")
+        st.caption("Model-ka waxaa lagu tababaray oo lagu tijaabiyay 4 xilli oo kala duwan (ma aha hal split) - haddii ROC-AUC-yadu joogto yihiin, natiijadu waa mid la isku halayn karo badan.")
         with st.spinner("Walk-forward validation socda (4 model oo la tababarayo)..."):
             wf_df = walk_forward_validation(feats, labels, n_folds=4)
         if wf_df is not None:
@@ -456,4 +422,4 @@ if train_btn:
             st.write("Xog ku filan walk-forward validation lama hayo.")
 
 else:
-    st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET ANTI-NOISE SIGNAL'.")
+    st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET 3-AI ENSEMBLE SIGNAL'.")
