@@ -113,7 +113,6 @@ def calc_adx(high, low, close, period=14):
     adx = dx.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
     return adx.fillna(0), plus_di.fillna(0), minus_di.fillna(0)
 
-# NEW: ATR (Average True Range) - volatility feature
 def calc_atr(high, low, close, period=14):
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
@@ -148,7 +147,8 @@ def _resample_ohlc(df, rule):
     agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last"}
     if "Volume" in df.columns:
         agg["Volume"] = "sum"
-    out = df.resample(rule).agg(agg)
+    # SAXNAAN: label='right', closed='right' si aanay muuqan xogta mustaqbalka
+    out = df.resample(rule, label='right', closed='right').agg(agg)
     return out.dropna()
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -166,7 +166,7 @@ def fetch_data(ticker, interval):
     return df
 
 # ──────────────────────────────────────────────────────────────
-# 4) ELITE FEATURE & LABEL ENGINEERING (ATR added)
+# 4) FEATURE & LABEL ENGINEERING
 # ──────────────────────────────────────────────────────────────
 
 def build_features(df):
@@ -185,7 +185,6 @@ def build_features(df):
     out["lower_wick"] = (pd.concat([open_p, close], axis=1).min(axis=1) - low) / (high - low).replace(0, np.nan)
     out["return_1"] = close.pct_change(1)
     out["return_3"] = close.pct_change(3)
-    # NEW: ATR normalized by price (so it's comparable across pairs/price levels)
     out["atr_pct"] = calc_atr(high, low, close, 14) / close
     return out
 
@@ -204,9 +203,9 @@ def build_ensemble():
     model1 = RandomForestClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
     model2 = ExtraTreesClassifier(n_estimators=150, max_depth=6, min_samples_leaf=20, random_state=42, n_jobs=1)
     model3 = GradientBoostingClassifier(n_estimators=100, max_depth=4, random_state=42)
-    return VotingClassifier(estimators=[('rf', model1), ('et', model2), ('gb', model3)], voting='soft'), model1
+    return VotingClassifier(estimators=[('rf', model1), ('et', model2), ('gb', model3)], voting='soft')
 
-def train_and_evaluate(features, labels, test_size=0.25):
+def train_and_evaluate(features, labels, horizon=1, test_size=0.25):
     from sklearn.metrics import accuracy_score, precision_score, recall_score, roc_auc_score
     from sklearn.utils.class_weight import compute_sample_weight
 
@@ -215,13 +214,16 @@ def train_and_evaluate(features, labels, test_size=0.25):
     data = data.dropna()
 
     split_idx = int(len(data) * (1 - test_size))
-    train, test = data.iloc[:split_idx], data.iloc[split_idx:]
+    
+    # SAXNAAN: Lag/Gap si train-ku uusan xog ka ogaanin test-ka xilliga horizon-ka
+    train = data.iloc[:split_idx - horizon]
+    test = data.iloc[split_idx:]
 
     feat_cols = [c for c in data.columns if c != "label"]
     X_train, y_train = train[feat_cols], train["label"]
     X_test, y_test = test[feat_cols], test["label"]
 
-    model, rf_ref = build_ensemble()
+    model = build_ensemble()
     sample_weight = compute_sample_weight("balanced", y_train)
     model.fit(X_train, y_train, sample_weight=sample_weight)
 
@@ -239,9 +241,6 @@ def train_and_evaluate(features, labels, test_size=0.25):
     except ValueError:
         metrics["roc_auc"] = float("nan")
 
-    # NEW: feature importance - pulled from the RandomForest sub-model
-    # (VotingClassifier itself has no single "importance", so we use one
-    # of its trained members as a representative view)
     rf_fitted = model.named_estimators_['rf']
     importances = pd.Series(rf_fitted.feature_importances_, index=feat_cols).sort_values(ascending=False)
 
@@ -262,10 +261,7 @@ def accuracy_by_confidence(y_test, proba_test, thresholds):
         rows.append({"Confidence Level": f"{int(t*100)}%+", "Filtered Trades": int(n), "Accuracy Natiijo": f"{acc * 100:.1f}%"})
     return pd.DataFrame(rows)
 
-# NEW: Walk-forward validation - trains/tests across multiple chronological
-# windows instead of a single split, so the reported ROC-AUC reflects
-# consistency over time rather than one lucky/unlucky period.
-def walk_forward_validation(features, labels, n_folds=4):
+def walk_forward_validation(features, labels, horizon=1, n_folds=4):
     from sklearn.metrics import roc_auc_score, accuracy_score
     from sklearn.utils.class_weight import compute_sample_weight
 
@@ -283,14 +279,15 @@ def walk_forward_validation(features, labels, n_folds=4):
     for i in range(1, n_folds + 1):
         train_end = fold_size * i
         test_end = fold_size * (i + 1) if i < n_folds else n
-        train = data.iloc[:train_end]
+        
+        train = data.iloc[:train_end - horizon]
         test = data.iloc[train_end:test_end]
         if len(test) < 20 or len(train) < 50:
             continue
         X_train, y_train = train[feat_cols], train["label"]
         X_test, y_test = test[feat_cols], test["label"]
 
-        model, _ = build_ensemble()
+        model = build_ensemble()
         sample_weight = compute_sample_weight("balanced", y_train)
         model.fit(X_train, y_train, sample_weight=sample_weight)
         proba = model.predict_proba(X_test)[:, 1]
@@ -326,11 +323,6 @@ with st.sidebar:
     st.write("---")
     train_btn = st.button("🚀 GET 3-AI ENSEMBLE SIGNAL")
     st.write("---")
-    st.info("""
-    * **3-AI Voting**: Sadex Algorithms ayaa isla ogolaada signal-ka.
-    * **News Filter**: Warar High/Medium-Impact ah ayaa la digniineeyaa.
-    * **ATR**: Volatility-ka suuqa ayaa loo isticmaalaa feature.
-    """)
 
 if train_btn:
     upcoming_events, is_high_risk, total_relevant = check_pair_news(news_data, pair_name)
@@ -340,10 +332,6 @@ if train_btn:
         st.warning(f"⚠️ **DIGNIIN NEWS:** Waxaa jira warar Medium-Impact ah oo ku dhow pair-kan:")
         for ev in upcoming_events:
             st.write(f"• **{ev['country']} - {ev['title']}** ({ev['impact']}) - Time: {ev['time']}")
-    elif total_relevant > 0:
-        st.success(f"✅ **News:** {total_relevant} warar High/Medium ah ayaa toddobaadkan jira {pair_name}, laakiin midna kuma dhawa 30 daqiiqo-hore ilaa 60 daqiiqo-dambe.")
-    else:
-        st.success(f"✅ **News:** Warar High/Medium-Impact ah oo {pair_name} khusaya toddobaadkan lama helin.")
 
     with st.spinner("3-da AI ee kala duwan ayaa falanqeynaya suuqa (Ensemble Voting)..."):
         try:
@@ -360,7 +348,7 @@ if train_btn:
     labels, future_ret = build_labels(raw, horizon=predict_horizon)
 
     model, feat_cols, X_test, y_test, proba_test, metrics, importances = train_and_evaluate(
-        feats, labels, test_size=test_size_pct
+        feats, labels, horizon=predict_horizon, test_size=test_size_pct
     )
 
     st.subheader("🔮 3-AI ENSEMBLE LIVE SIGNAL")
@@ -394,32 +382,19 @@ if train_btn:
     col_acc.metric("🎯 Accuracy Guud", f"{metrics['accuracy']*100:.1f}%")
     col_auc.metric("📉 ROC-AUC", f"{metrics['roc_auc']:.3f}")
     col_prec.metric("📈 Precision", f"{metrics['precision']*100:.1f}%")
-    st.caption(f"3-AI-gu wuxuu BUY sheegay {metrics['buy_rate']*100:.1f}% xogta test-ka ah.")
 
     st.divider()
 
-    st.subheader("🧩 Feature Importance (kee indicator-ka ayaa model-ka ugu saameynta badan)")
+    st.subheader("🧩 Feature Importance")
     st.bar_chart(importances)
-
-    st.divider()
-
-    st.subheader("🎯 Jadwalka Saxnaanta Heerarka Kalsoonida (Confidence Matrix)")
-    thresh_df = accuracy_by_confidence(y_test.reset_index(drop=True), proba_test, [0.5, 0.6, 0.7, 0.8])
-    if not thresh_df.empty:
-        st.dataframe(thresh_df, use_container_width=True, hide_index=True)
-    else:
-        st.write("Xog ku filan jadwalka lama hayo hadda.")
 
     if run_walk_forward:
         st.divider()
-        st.subheader("🔁 Walk-Forward Validation (4 window oo kala duwan)")
-        st.caption("Model-ka waxaa lagu tababaray oo lagu tijaabiyay 4 xilli oo kala duwan (ma aha hal split) - haddii ROC-AUC-yadu joogto yihiin, natiijadu waa mid la isku halayn karo badan.")
-        with st.spinner("Walk-forward validation socda (4 model oo la tababarayo)..."):
-            wf_df = walk_forward_validation(feats, labels, n_folds=4)
+        st.subheader("🔁 Walk-Forward Validation")
+        with st.spinner("Walk-forward validation socda..."):
+            wf_df = walk_forward_validation(feats, labels, horizon=predict_horizon, n_folds=4)
         if wf_df is not None:
             st.dataframe(wf_df, use_container_width=True, hide_index=True)
-        else:
-            st.write("Xog ku filan walk-forward validation lama hayo.")
 
 else:
     st.info("Dooro Pair iyo Timeframe dhanka bidix ah, ka dibna riix badanka '🚀 GET 3-AI ENSEMBLE SIGNAL'.")
